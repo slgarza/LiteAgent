@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteAgent</title>
+  <meta name="description" content="A simple local AI chat with browser tools, skills and scheduled reminders.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./app.css">
+  <script defer src="./marked.js"></script>
+  <script defer src="./purify.js"></script>
+  <script defer src="./app.js"></script>
+  <script defer src="./manage.js"></script>
+  <script defer src="./notifications.js"></script>
+</head>
+<body>
+  <a class="skip" href="#message">Skip to message</a>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" aria-label="Conversations">
+      <a class="wordmark" href="/">LiteAgent</a>
+      <button type="button" id="new-chat" class="new-chat">New chat</button>
+      <div class="history-heading">Your chats</div>
+      <div id="history-list" class="history-list" aria-busy="true"><p class="muted">Loading chats…</p></div>
+      <button type="button" id="open-settings" class="text-button help-button">Settings</button>
+      <button type="button" id="show-schedules" class="text-button help-button">Schedules</button>
+      <button type="button" id="help" class="text-button help-button">Commands</button>
+      <p class="connection" id="connection" role="status">Connecting…</p>
+    </aside>
+    <main id="main" class="main-shell">
+      <header class="topbar">
+        <button type="button" id="toggle-sidebar" class="text-button mobile-only" aria-controls="sidebar" aria-expanded="false">Chats</button>
+        <span class="mobile-wordmark">LiteAgent</span>
+      </header>
+      <noscript><p>Enable JavaScript to chat with LiteAgent, or use the CLI.</p></noscript>
+      <div id="message-scroll" class="message-scroll">
+        <div id="messages" class="messages"><div class="welcome"><h1>What can I help with?</h1><p>Just ask. Your browser, skills and reminders are here.</p><button id="onboard" type="button" class="text-button">Connect a model</button></div></div>
+      </div>
+      <div class="composer-area">
+        <form id="chat-form" class="composer">
+          <label for="message" class="visually-hidden">Message LiteAgent</label>
+          <div id="command-menu" class="command-menu" role="listbox" aria-label="Commands" hidden></div>
+          <textarea id="message" aria-autocomplete="list" aria-controls="command-menu" required maxlength="12000" rows="2" placeholder="Message LiteAgent…"></textarea>
+          <div class="composer-toolbar">
+            <button type="button" id="show-settings" class="text-button composer-icon" title="Settings" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--color-paper-2)"/><circle cx="15" cy="17" r="3" fill="var(--color-paper-2)"/></svg></button>
+            <span id="run-status" class="reply-status" role="status"></span>
+            <button type="button" id="model-menu-toggle" class="text-button model-menu-toggle" aria-expanded="false" aria-controls="model-menu" title="Choose model and reasoning" disabled>
+              <svg class="model-symbol" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m13 2-9 12h7l-1 8 10-13h-7l1-7Z"/></svg>
+              <span id="composer-model">Loading…</span><span id="composer-reasoning"></span>
+              <svg class="model-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+            </button>
+            <button type="button" id="stop" class="composer-action" title="Stop reply" aria-label="Stop reply" hidden><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg></button>
+            <button type="submit" id="send" class="primary composer-action" title="Send message" aria-label="Send message"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button>
+          </div>
+          <section id="model-menu" class="model-menu" aria-label="Model and reasoning" hidden>
+            <div class="model-menu-heading"><strong>Model &amp; reasoning</strong><button type="button" id="close-model-menu" class="text-button" aria-label="Close model selector">×</button></div>
+            <label for="model-select">Model</label>
+            <select id="model-select" class="model-picker" aria-describedby="model-feedback" disabled><option>Loading models…</option></select>
+            <label for="reasoning-select">Reasoning</label>
+            <select id="reasoning-select" class="model-picker" disabled><option value="auto">Auto</option></select>
+            <div class="model-menu-actions"><button id="about-model" class="text-button" type="button" hidden>About this model</button><button id="refresh-models" class="text-button" type="button" aria-label="Refresh available models" disabled>Refresh models</button></div>
+            <p class="muted">Applies to all chats.</p>
+          </section>
+        </form>
+        <p id="model-feedback" class="model-feedback feedback" role="status"></p>
+        <p id="chat-feedback" class="feedback" role="status"></p>
+        <p class="composer-hint">Enter to send · Shift+Enter for a new line · / or Ctrl+K for commands</p>
+      </div>
+    </main>
+  </div>
+  <dialog id="model-dialog" class="glass-dialog model-dialog" aria-labelledby="model-dialog-title">
+    <div class="dialog-heading"><h2 id="model-dialog-title">About this model</h2><button type="button" data-close="model-dialog" aria-label="Close model details">×</button></div>
+      <div id="model-description" class="model-description" role="status" hidden>
+        <p><strong id="model-summary"></strong> <span id="model-detail"></span></p>
+        <p id="model-speed" class="model-speed"></p>
+        <p id="model-reasoning" class="model-reasoning" hidden></p>
+      </div>
+    <p id="model-id-detail" class="muted"></p>
+  </dialog>
+  <dialog id="commands-dialog" class="glass-dialog command-palette" aria-labelledby="commands-title">
+    <div class="dialog-heading"><h2 id="commands-title">Commands</h2><button type="button" data-close="commands-dialog" aria-label="Close commands">×</button></div>
+    <label class="visually-hidden" for="command-search">Find a command</label>
+    <input id="command-search" type="search" placeholder="Find a command…" autocomplete="off">
+    <div id="palette-list" role="listbox" aria-label="Available commands"></div>
+    <p class="muted palette-hint">↑ ↓ to browse · Enter to choose · Esc to close</p>
+  </dialog>
+  <dialog id="status-dialog" class="glass-dialog" aria-labelledby="status-title">
+    <div class="dialog-heading"><h2 id="status-title">Workspace status</h2><button type="button" data-close="status-dialog" aria-label="Close status">×</button></div>
+    <div id="status-content"></div>
+  </dialog>
+  <dialog id="settings-dialog" class="glass-dialog settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-heading"><div><p class="eyebrow">YOUR WORKSPACE</p><h2 id="settings-title">Settings</h2></div><button type="button" data-close="settings-dialog" aria-label="Close settings">×</button></div>
+    <div class="settings-layout">
+      <nav class="settings-nav" aria-label="Settings sections">
+        <button type="button" data-settings-tab="generation" aria-current="true">Chat &amp; runs</button>
+        <button type="button" data-settings-tab="connections">Models &amp; keys</button>
+        <button type="button" data-settings-tab="notifications">Notifications</button>
+        <button type="button" data-settings-tab="schedules">Crons &amp; reminders</button>
+        <button type="button" data-settings-tab="skills">Skills</button>
+        <button type="button" data-settings-tab="mcp">MCP servers</button>
+      </nav>
+      <div class="settings-content">
+      <section id="panel-generation" class="settings-panel" aria-label="Chat and run settings">
+      <h3>Chat &amp; runs</h3>
+      <form id="settings-form">
+      <p class="muted">Applies to all chats and future scheduled runs. Auto keeps the provider default. Model support for reasoning and sampling varies.</p>
+      <div class="form-grid">
+        <label>Temperature<input id="setting-temperature" type="number" min="0" max="2" step="0.05" placeholder="Auto"></label>
+        <label>Output token limit<input id="setting-max_tokens" type="number" min="0" max="131072" placeholder="Auto"></label>
+        <label>Ollama context tokens<input id="setting-context_tokens" type="number" min="2048" max="262144" placeholder="16384"></label>
+        <label>Recent turns in context<input id="setting-history_turns" type="number" min="1" max="100" placeholder="12"></label>
+        <label>Request timeout (seconds)<input id="setting-timeout_sec" type="number" required min="10" max="86400" placeholder="900" aria-describedby="request-timeout-help"><small id="request-timeout-help" class="muted">Per model request. Default: 900 seconds (15 minutes).</small></label>
+        <label>Run timeout (seconds)<input id="setting-run_timeout_sec" type="number" min="10" max="86400" placeholder="1800" aria-describedby="run-timeout-help"><small id="run-timeout-help" class="muted">Total time for the reply and its actions. Default: 1800 seconds (30 minutes).</small></label>
+        <label>Action limit<input id="setting-max_steps" type="number" required min="1" max="50"></label>
+      </div>
+      <label>Custom instructions<textarea id="setting-system_prompt" rows="3" maxlength="12000" placeholder="Language, response style, or your working preferences"></textarea></label>
+      <p id="settings-feedback" class="feedback" role="status"></p>
+      <div class="dialog-actions"><button type="submit" id="save-settings" class="primary">Save settings</button></div>
+    </form>
+      </section>
+      <section id="panel-connections" class="settings-panel" aria-label="Model connections" hidden>
+        <div class="section-heading"><div><h3>Models &amp; API keys</h3><p class="muted">Save a connection for each provider and switch when you need it.</p></div><button id="new-connection" type="button">Add</button></div>
+        <div id="connections-list" class="management-list"></div>
+        <form id="connection-form" class="editor-form" hidden>
+          <h4 id="connection-editor-title">New connection</h4>
+          <div class="form-grid">
+            <label>Name<input id="connection-name" required maxlength="120" placeholder="My Claude account"></label>
+            <label>Provider<select id="connection-provider"><option value="ollama">Ollama · local models</option><option value="openai">OpenAI Chat / compatible API</option><option value="openai-responses">OpenAI Responses / Codex models</option><option value="anthropic">Anthropic · Claude</option></select></label>
+            <label>Base URL<input id="connection-url" type="url" required></label>
+          </div>
+          <label>API key<input id="connection-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key"></label>
+          <label class="check-label"><input id="connection-clear-key" type="checkbox">Remove saved key</label>
+          <div class="connection-model-picker">
+            <label>Model<select id="connection-model-select" aria-describedby="connection-model-feedback"></select></label>
+            <button type="button" id="connection-fetch-models">Fetch models</button>
+          </div>
+          <p id="connection-model-feedback" class="feedback" role="status"></p>
+          <label id="connection-custom-model">Custom model ID<input id="connection-model" required maxlength="200" placeholder="Use this if your provider does not list models"></label>
+          <label class="check-label"><input id="connection-activate" type="checkbox" checked>Use this connection now</label>
+          <p class="muted">OpenAI and Claude use API credentials. ChatGPT, Codex and Claude Code subscription logins are not imported.</p>
+          <div class="dialog-actions"><button type="button" id="cancel-connection">Cancel</button><button type="submit" id="save-connection" class="primary">Save connection</button></div>
+        </form>
+        <p id="connections-feedback" class="feedback" role="status"></p>
+      </section>
+      <section id="panel-skills" class="settings-panel" aria-label="Skills library" hidden>
+        <div class="section-heading"><div><h3>Skills</h3><p class="muted">Reusable procedures for conversations and scheduled jobs.</p></div><button id="new-skill" type="button">Add</button></div>
+        <div id="skills-list" class="management-list"></div>
+        <form id="skill-form" class="editor-form" hidden>
+          <h4 id="skill-editor-title">New skill</h4>
+          <label>Name<input id="skill-name" required maxlength="120"></label>
+          <label>When to use it<input id="skill-description" maxlength="600"></label>
+          <label>Instructions<textarea id="skill-instructions" required minlength="10" maxlength="12000" rows="6" placeholder="Objective, steps and how to verify success"></textarea></label>
+          <div class="dialog-actions"><button type="button" id="cancel-skill">Cancel</button><button type="submit" id="save-skill" class="primary">Save skill</button></div>
+        </form>
+        <p id="skills-feedback" class="feedback" role="status"></p>
+      </section>
+      <section id="panel-mcp" class="settings-panel" aria-label="MCP servers" hidden>
+        <div class="section-heading"><div><h3>MCP servers</h3><p class="muted">Connect tools by URL. Enabled servers are available to chats and scheduled jobs.</p></div><button id="new-mcp" type="button">Add</button></div>
+        <div id="mcp-list" class="management-list"></div>
+        <form id="mcp-form" class="editor-form" hidden>
+          <h4 id="mcp-editor-title">New MCP server</h4>
+          <div class="form-grid">
+            <label>Name<input id="mcp-name" required maxlength="120" placeholder="Local tools"></label>
+            <label>Request timeout (seconds)<input id="mcp-timeout" type="number" min="5" max="120" value="30" required></label>
+          </div>
+          <label>Streamable HTTP endpoint<input id="mcp-url" type="url" required placeholder="http://localhost:3000/mcp"></label>
+          <label>Bearer token<input id="mcp-token" type="password" autocomplete="new-password" placeholder="Optional; leave blank to keep the saved token"></label>
+          <label class="check-label"><input id="mcp-clear-token" type="checkbox">Remove saved token</label>
+          <label class="check-label"><input id="mcp-enabled" type="checkbox" checked>Enable this server</label>
+          <div class="dialog-actions"><button type="button" id="cancel-mcp">Cancel</button><button type="submit" id="save-mcp" class="primary">Save server</button></div>
+        </form>
+        <p id="mcp-feedback" class="feedback" role="status"></p>
+      </section>
+      <section id="panel-notifications" class="settings-panel" aria-label="Notification settings" hidden>
+        <h3>Notifications</h3>
+        <p class="muted">Hear from LiteAgent when a reminder arrives or a scheduled task finishes. Keep the app and this browser tab open; the tab can stay in the background.</p>
+        <div class="notification-card">
+          <div class="card-heading"><strong>Desktop alerts</strong><span id="notification-permission" class="badge"></span></div>
+          <p id="notification-permission-help" class="muted"></p>
+          <button type="button" id="enable-notifications">Enable desktop alerts</button>
+        </div>
+        <div class="notification-card">
+          <label class="check-label"><input id="notification-sound" type="checkbox" checked>Play a notification sound</label>
+          <p id="notification-sound-help" class="muted">A short, gentle chime for new alerts.</p>
+          <label class="check-label"><input id="notification-replies" type="checkbox" checked>Notify me when a chat reply finishes while I’m away</label>
+          <p class="muted">Reminders and scheduled tasks notify you even while you’re here. Preferences are saved in this browser.</p>
+          <div class="dialog-actions"><button type="button" id="test-notification">Test notification</button></div>
+        </div>
+        <p id="notification-feedback" class="feedback" role="status"></p>
+      </section>
+      <section id="panel-schedules" class="settings-panel" aria-label="Crons and reminders" hidden>
+    <h3>Crons &amp; reminders</h3>
+    <p class="muted">All schedules, including those created by LiteAgent in any chat.</p>
+    <div class="schedule-overview"><p id="schedule-summary" class="muted"></p><label class="visually-hidden" for="schedule-filter">Filter schedules</label><select id="schedule-filter"><option value="all">All schedules</option><option value="active">Active</option><option value="paused">Paused</option><option value="attention">Needs attention</option></select></div>
+    <p class="muted">Keep LiteAgent running. Missed occurrences run once on return. Failed or interrupted jobs pause for review.</p>
+    <div id="schedule-list"></div>
+    <details id="schedule-editor"><summary>Create schedule</summary>
+      <form id="schedule-form">
+        <label>Title<input id="schedule-title" required maxlength="1000"></label>
+        <div class="form-grid">
+          <label>Type<select id="schedule-kind"><option value="task">AI task</option><option value="reminder">Reminder</option><option value="skill">Saved skill</option></select></label>
+          <label>Repeat<select id="schedule-repeat"><option value="cron">Cron expression</option><option value="daily">Daily</option><option value="once">Once</option></select></label>
+          <label id="cron-field">Cron (minute hour day month weekday)<input id="schedule-cron" value="0 14 * * 1-5"></label>
+          <label id="time-field" hidden>Local time<input id="schedule-time" type="time" value="14:00"></label>
+          <label id="date-field" hidden>Date<input id="schedule-date" type="date"></label>
+          <label>Time zone<input id="schedule-timezone" required placeholder="America/Mexico_City"></label>
+          <label id="skill-field" hidden>Skill<select id="schedule-skill"></select></label>
+        </div>
+        <label id="task-field">Instructions<textarea id="schedule-task" rows="3" maxlength="12000" placeholder="Complete instructions for each execution"></textarea></label>
+        <div class="dialog-actions"><button type="submit" id="save-schedule" class="primary">Create schedule</button></div>
+      </form>
+    </details>
+    <p id="schedules-feedback" class="feedback" role="status"></p>
+      </section>
+      </div>
+    </div>
+  </dialog>
+  <div id="notification-toasts" class="notification-toasts" popover="manual" aria-live="polite" aria-relevant="additions"></div>
+</body>
+</html>

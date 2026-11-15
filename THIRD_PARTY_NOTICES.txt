@@ -1,0 +1,61 @@
+LiteAgent is an independently implemented application. No OpenClaw or Hermes
+source code is included.
+
+Go runtime and standard library
+------------------------------
+Go binaries incorporate the Go runtime and standard library. Their BSD license
+is reproduced in GO-LICENSE.txt, included with the binary distribution.
+
+Chrome and ChromeDriver
+-----------------------
+Chrome is installed separately by the user. ChromeDriver may be downloaded on
+first use from Google's Chrome for Testing distribution. These components retain
+their own licenses and are not included in LiteAgent's downloadable packages.
+https://developer.chrome.com/docs/chromedriver/
+
+Models and providers
+--------------------
+Ollama, model weights and remote API access are configured separately. Their
+respective licenses and terms apply independently of the LiteAgent source code.
+
+Embedded chat rendering
+-----------------------
+Marked 18.2.0 (MIT): https://github.com/markedjs/marked
+DOMPurify 3.4.17 (Apache-2.0 option): https://github.com/cure53/DOMPurify
+These libraries are bundled locally. Their license texts are reproduced in
+LICENSES.txt in the distribution and web/LICENSES.txt in the source tree.
+
+The UI follows familiar chat conventions, with Open WebUI's documented chat
+interface as a reference. No Open WebUI source code is included.
+https://docs.openwebui.com/features/chat-conversations/chat-features/
+
+The UI uses local system fonts; no third-party fonts, analytics or remote assets
+are loaded. Node.js, Python and a JavaScript package manager are not needed to run
+LiteAgent. The Go application includes the cron parser listed below.
+
+
+robfig/cron v3.0.1
+------------------
+https://github.com/robfig/cron
+
+Copyright (C) 2012 Rob Figueiredo
+All Rights Reserved.
+
+MIT LICENSE
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
