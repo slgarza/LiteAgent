@@ -4,10 +4,18 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 
 ## Unreleased
 
+### Added
+
+- Windows desktop build without a console, startup error dialogs and a local diagnostic log; the console build remains available for development and terminal commands.
+- Quit LiteAgent in the sidebar, with graceful server shutdown and cancellation of active work. Reopening the desktop executable connects to the existing instance when its data directory matches.
+- Ollama setup guidance for unavailable servers, empty model lists and missing selected models, with a small-model download command and a link to API settings.
+- Automatic refresh of installed Ollama models while idle; the main picker no longer presents a missing default model as ready.
+
 ### Changed
 
 - Clarified source versus compiled-package startup, Go version requirements, Linux and Windows commands, and the absence of published binaries or a tracked `dist/` directory.
 - Added Windows ZIP extraction and project-folder checks, troubleshooting for missing `go.mod`, and conditional startup after a successful build.
+- Documented Ollama installation, model downloads, exact Hugging Face model IDs, and Windows desktop versus console builds. Windows packages include both executables.
 
 ## 0.3.0 — 2026-11-15
 

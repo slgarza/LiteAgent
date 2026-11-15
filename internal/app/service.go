@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -30,6 +31,9 @@ func Main(args []string) error {
 	if command != "serve" && command != "run" && command != "chat" {
 		return fmt.Errorf("usage: liteagent [serve|chat|run|version] [options]")
 	}
+	if desktopMode && command != "serve" {
+		return fmt.Errorf("use LiteAgent-console.exe for terminal commands; LiteAgent.exe opens the web application")
+	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	port := flags.Int("port", 8787, "Local port")
 	data := flags.String("data", "", "Data directory (optional, for portable use)")
@@ -52,17 +56,58 @@ func Main(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	base := "http://" + address
+	resolvedDir, err := dataDirectory(*data)
+	if err != nil {
+		return err
+	}
+	if desktopMode {
+		running, err := existingDesktopInstance(ctx, base, resolvedDir)
+		if err != nil {
+			return err
+		}
+		if running {
+			if !*noOpen {
+				openURL(base)
+			}
+			return nil
+		}
+	}
 	if command == "chat" {
 		if _, err := fetchCLIState(ctx, base, "new"); err == nil {
 			fmt.Println("Connected to LiteAgent at " + base + ". Its server stays running when you exit this chat.")
 			return chatCLI(ctx, base, *chatID, os.Stdin, os.Stdout)
 		}
 	}
-	service, err := startLocalService(ctx, address, *data)
+	service, err := startLocalService(ctx, address, resolvedDir)
 	if err != nil {
+		// Another desktop launch may have won the listener race after our probe.
+		if desktopMode {
+			if running, _ := existingDesktopInstance(ctx, base, resolvedDir); running {
+				if !*noOpen {
+					openURL(base)
+				}
+				return nil
+			}
+		}
 		return err
 	}
-	defer service.Close()
+	var diagnostics *os.File
+	previousLog := log.Writer()
+	defer func() {
+		service.Close()
+		if diagnostics != nil {
+			log.SetOutput(previousLog)
+			diagnostics.Close()
+		}
+	}()
+	if desktopMode {
+		diagnostics, err = os.OpenFile(filepath.Join(resolvedDir, "liteagent.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return err
+		}
+		log.SetOutput(diagnostics)
+		log.Printf("LiteAgent %s started at %s", Version, base)
+	}
 	if command == "chat" {
 		fmt.Println("Local server started at " + base + ". Keep this terminal open for schedules to run.")
 		return chatCLI(ctx, base, *chatID, os.Stdin, os.Stdout)
@@ -73,6 +118,8 @@ func Main(args []string) error {
 	}
 	select {
 	case <-ctx.Done():
+		return nil
+	case <-service.app.root.Done():
 		return nil
 	case err := <-service.finished:
 		if err == http.ErrServerClosed {
@@ -90,15 +137,19 @@ type localService struct {
 	finished chan error
 }
 
-func startLocalService(parent context.Context, address, dir string) (*localService, error) {
+func dataDirectory(dir string) (string, error) {
 	if dir == "" {
 		root, err := os.UserConfigDir()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		dir = filepath.Join(root, "LiteAgent")
 	}
-	dir, err := filepath.Abs(dir)
+	return filepath.Abs(dir)
+}
+
+func startLocalService(parent context.Context, address, dir string) (*localService, error) {
+	dir, err := dataDirectory(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +180,8 @@ func startLocalService(parent context.Context, address, dir string) (*localServi
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
-	app := &App{store: store, browser: &Browser{dir: dir}, dir: dir, root: ctx}
-	server := &http.Server{BaseContext: func(net.Listener) context.Context { return ctx }, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	app := &App{store: store, browser: &Browser{dir: dir}, dir: dir, root: ctx, shutdown: cancel}
+	server := &http.Server{Addr: listener.Addr().String(), BaseContext: func(net.Listener) context.Context { return ctx }, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	s := &localService{app: app, server: server, dataLock: lock, cancel: cancel, finished: make(chan error, 1)}
 	app.wg.Add(1)
 	go func() { defer app.wg.Done(); app.schedulerLoop(ctx) }()
@@ -161,6 +212,7 @@ func openURL(address string) {
 	default:
 		cmd = exec.Command("xdg-open", address)
 	}
+	hideChildConsole(cmd)
 	if cmd.Start() == nil {
 		go func() { _ = cmd.Wait() }()
 	}

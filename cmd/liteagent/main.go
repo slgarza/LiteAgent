@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 
 	"github.com/slgarza/LiteAgent/internal/app"
@@ -9,7 +8,7 @@ import (
 
 func main() {
 	if err := app.Main(os.Args[1:]); err != nil {
-		log.Print(err)
+		reportError(err)
 		os.Exit(1)
 	}
 }

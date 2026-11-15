@@ -25,6 +25,7 @@ flowchart LR
 | --- | --- |
 | `cmd/liteagent/main.go` | Process entry |
 | `internal/app/service.go` | Flags, listener, data lock, startup/shutdown |
+| `internal/app/lifecycle.go`, `mode_*.go`, `process_*.go` | Desktop relaunch checks, Quit endpoint, build mode and child console behavior |
 | `internal/app/server.go` | Routing, public state, run launch/cancellation, chat deletion |
 | `internal/app/agent.go` | Context and model/tool loop |
 | `internal/app/provider.go`, `responses.go` | Model protocols |
@@ -56,5 +57,7 @@ The scheduler checks every five seconds. An occurrence and its run are claimed i
 ## Interface
 
 The UI polls state and ignores stale responses using a revision counter. The composer opens a compact model/reasoning panel. Saved credentials never enter public state. Notification preferences and delivery markers are browser-local; desktop alerts require permission and audio requires a page interaction.
+
+`web/setup.js` renders Ollama setup and handles Quit. Installed Ollama models refresh while idle; the UI distinguishes an unreachable server, an empty list and a missing saved model. Discovery lists names without downloading weights or invoking inference. The Windows desktop build reuses a matching running instance, logs diagnostics locally and exits through the same cancellation/cleanup path as the console build.
 
 See [Filesystem](FILESYSTEM.md) and [Data](DATA.md) for boundaries and limits.

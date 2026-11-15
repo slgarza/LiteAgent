@@ -10,6 +10,8 @@ A local assistant with a web chat, browser automation, text-file tools, saved pr
 
 - Ollama, OpenAI-compatible APIs, OpenAI Responses and Anthropic.
 - Model and reasoning controls in the message composer.
+- Automatic discovery of installed Ollama models and first-run setup guidance.
+- Windows production executable without a console; Quit from the interface.
 - Chrome automation and local text-file inspection, creation and editing.
 - Saved procedures, cron jobs, reminders and notification sounds.
 - Settings for connections, timeouts, notifications, schedules, skills and MCP servers.
@@ -58,7 +60,7 @@ If you downloaded the GitHub ZIP:
 
 ```powershell
 if (Test-Path .\go.mod) {
-    go build -o LiteAgent.exe ./cmd/liteagent
+    go build -tags desktop -ldflags "-H=windowsgui" -o LiteAgent.exe ./cmd/liteagent
     if ($LASTEXITCODE -eq 0) { .\LiteAgent.exe }
 } else {
     Write-Host "Open PowerShell in the extracted LiteAgent folder containing go.mod."
@@ -68,6 +70,8 @@ if (Test-Path .\go.mod) {
 **`go.mod file not found`** means the command was run outside the project folder, or the source was not fully extracted. After that failure, **`.\LiteAgent.exe is not recognized`** follows because compilation did not create the executable there. Enter the folder containing `go.mod` and compile again; do not create a new module with `go mod init`.
 
 Once compiled, subsequent launches use only the executable and do not need Go.
+
+This Windows build opens the browser without a terminal window. Use **Quit LiteAgent** in the sidebar to stop the server. Closing the browser tab leaves the server running; reopening the executable brings back the same instance. `go run ./cmd/liteagent serve` keeps the development console. For terminal commands and diagnostics, build `go build -o LiteAgent-console.exe ./cmd/liteagent` instead.
 
 Open **http://127.0.0.1:8787** and configure **Settings → Models & API keys**. You can fetch model IDs before saving a connection. Remote providers require API credentials; subscription logins are not imported.
 
@@ -84,6 +88,27 @@ go run ./cmd/liteagent serve --data /path/to/private-data
 
 The default data directory is the OS user configuration directory plus `LiteAgent`, separate from this source tree. Request timeout defaults to **900 seconds**; the complete run deadline defaults to **1800 seconds**. Both are configurable in Settings.
 
+## Set up a local model with Ollama
+
+1. [Install Ollama](https://ollama.com/download) and open it. If it is not already running, start it with `ollama serve` in a separate terminal.
+2. Download a small model from PowerShell or a terminal:
+
+   ```bash
+   ollama pull qwen3:0.6b
+   ```
+
+3. Open LiteAgent and choose the installed model beside Send. The list refreshes automatically while idle; **Check again** or **Refresh models** updates it immediately.
+
+[Qwen3 0.6B](https://ollama.com/library/qwen3:0.6b) is a small starting option for basic chat; its ability to perform complex tasks with tools is limited. LiteAgent shows setup steps if Ollama is unavailable or has no models. It lists installed models without loading all of them into memory, and requests the selected model when you chat.
+
+For the larger Qwen3 8B GGUF model:
+
+```bash
+ollama run hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+```
+
+This downloads the model and starts a terminal chat. Enter `/bye` to leave that chat while keeping Ollama running. In LiteAgent, select the exact `hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M` entry; it is a different model ID from `qwen3:8b`. See the [Qwen model card](https://huggingface.co/Qwen/Qwen3-8B-GGUF) and [Ollama CLI reference](https://docs.ollama.com/cli). Model downloads require internet access; larger models require more memory. LiteAgent does not bundle Ollama or model weights.
+
 ## Run an already compiled package
 
 These instructions apply if you have a package built locally with `scripts/build.sh` or supplied separately; the packages are not currently downloadable from this repository.
@@ -91,7 +116,7 @@ These instructions apply if you have a package built locally with `scripts/build
 - **Windows:** extract `LiteAgent-windows-amd64.zip`, then double-click `LiteAgent.exe`.
 - **Linux:** extract `LiteAgent-linux-amd64.zip`, open a terminal in that folder and run `./liteagent`. If the executable permission was lost during extraction, run `chmod +x liteagent` first.
 
-Both open the chat at **http://127.0.0.1:8787**. Keep the console/application running for chats and scheduled work. You still need to configure a model; Chrome is needed only for browser automation.
+Both open the chat at **http://127.0.0.1:8787**. On Windows, the production executable runs without a console; **Quit LiteAgent** stops it. The package also includes `LiteAgent-console.exe` for terminal use. On Linux, keep the terminal open; Ctrl+C or **Quit LiteAgent** stops the server. Scheduled work needs the server running, and browser notifications also need an open tab. You still need to configure a model; Chrome is needed only for browser automation.
 
 ## Interface
 

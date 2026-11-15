@@ -16,9 +16,11 @@ On Windows, fully extract the source ZIP and open PowerShell in the folder conta
 
 The following instructions apply when you already have a compiled package:
 
-**Windows:** extract `LiteAgent-windows-amd64.zip` and open `LiteAgent.exe`. The chat opens at `http://127.0.0.1:8787`. Keep the console open; `Ctrl+C` stops the server. `Start-LiteAgent.bat` uses a portable `data` folder next to the executable.
+**Windows:** extract `LiteAgent-windows-amd64.zip` and open `LiteAgent.exe`. The chat opens at `http://127.0.0.1:8787`. The production executable runs without a console window. Use **Quit LiteAgent** in the sidebar to stop the server, cancel active work and stop processing reminders until the next launch. Closing a browser tab leaves the server running; reopening the same executable/data folder brings back the running instance. Desktop notifications still require an open tab. Startup errors appear in a Windows dialog; diagnostics go to `liteagent.log` in the runtime data directory. `Start-LiteAgent.bat` uses a portable `data` folder next to the executable. Quit any instance using the default port before switching data folders, or use another `--port`.
 
-**Linux:** extract `LiteAgent-linux-amd64.zip`, open a terminal in that folder and run `./liteagent`. If extraction did not preserve executable permissions, run `chmod +x liteagent` first.
+When building from source, use `go build -tags desktop -ldflags "-H=windowsgui" -o LiteAgent.exe ./cmd/liteagent` for this behavior. `go run ./cmd/liteagent serve` and ordinary Go builds retain a console for development. The packaged `LiteAgent-console.exe` provides terminal commands and console diagnostics.
+
+**Linux:** extract `LiteAgent-linux-amd64.zip`, open a terminal in that folder and run `./liteagent`. If extraction did not preserve executable permissions, run `chmod +x liteagent` first. Keep that terminal open; Ctrl+C or **Quit LiteAgent** stops the server.
 
 Open **Settings → Models & API keys** to save and activate an Ollama, OpenAI-compatible or Anthropic connection. Each profile keeps its own endpoint, model and optional key. In the terminal, `/onboard` still guides you through setup. The web `/onboard` opens the connection settings. The **model and reasoning selector beside Send** opens a compact panel to change either setting. **Refresh models** updates the list after installing a model. The selection is saved and applies to all chats; finish or stop an active reply before switching. `/models` and `/model MODEL_ID` remain available in the web chat and CLI, including for providers that do not list models.
 
@@ -54,20 +56,20 @@ Numeric generation settings accept zero as the built-in/provider default: output
 ## Terminal chat
 
 ```text
-LiteAgent.exe chat
-LiteAgent.exe chat --port 8797
-LiteAgent.exe chat --chat CONVERSATION_ID
-LiteAgent.exe chat --data data
+LiteAgent-console.exe chat
+LiteAgent-console.exe chat --port 8797
+LiteAgent-console.exe chat --chat CONVERSATION_ID
+LiteAgent-console.exe chat --data data
 ```
 
-The CLI connects to LiteAgent on the chosen port, or starts its own local server if none is running. It shares conversations, settings, skills and schedules with the web chat. Use `/chats` and `/resume ID` to continue a conversation, and `/exit` to leave the CLI. Reminders appear while the CLI is open.
+On Linux, use `./liteagent` in these terminal examples. The CLI connects to LiteAgent on the chosen port, or starts its own local server if none is running. It shares conversations, settings, skills and schedules with the web chat. Use `/chats` and `/resume ID` to continue a conversation, and `/exit` to leave the CLI. Reminders appear while the CLI is open.
 
 When the CLI starts its own server, exiting also stops that server. When it connects to an existing server, exiting leaves the server running. `--data PATH` chooses storage when starting a new server; an existing server keeps its own storage.
 
 To send one message to an already running server:
 
 ```text
-LiteAgent.exe run "Open https://example.com and tell me the heading"
+LiteAgent-console.exe run "Open https://example.com and tell me the heading"
 ```
 
 ## Commands
@@ -114,14 +116,30 @@ Local models on CPU may take several minutes to process the first message, espec
 | `openai-responses` | `https://api.openai.com/v1` | OpenAI API key and a Responses-compatible model (including supported Codex models) |
 | `anthropic` | `https://api.anthropic.com` | Anthropic API key and model ID |
 
-With Ollama installed, one configurable example is:
+### First local model
+
+[Install Ollama](https://ollama.com/download), then open the Ollama application. If no server is running, start `ollama serve` in another terminal and keep it open. Download a small initial model from PowerShell or a terminal:
 
 ```bash
-ollama pull qwen3:8b
-ollama serve
+ollama pull qwen3:0.6b
+ollama list
 ```
 
-If the Ollama app is already running, do not launch a second server. LiteAgent does not install Ollama or bundle model weights. The Ollama adapter defaults to a 16K context and preserves the model’s sampling defaults unless you override temperature; memory requirements and tool reliability vary by model and hardware.
+LiteAgent queries Ollama's [installed model list](https://docs.ollama.com/api/tags) on connection and roughly every 15 seconds while idle with the model menu closed. **Check again** on the setup card or **Refresh models** in the picker refreshes it immediately. It does not download or load every listed model into memory. Select an installed entry beside Send; Ollama loads the selected model when a request needs it.
+
+If Ollama is unavailable, the chat shows installation/startup instructions and the configured address. If its list is empty, it shows the download command. If the saved model is absent, choose an installed model. The main Ollama picker only offers installed entries, and ordinary messages stay disabled until the selected model is listed. Slash commands and API connection settings remain available. Discovery proves installation, not successful inference: a model can still fail if memory is insufficient or the requested features are unsupported.
+
+[Qwen3 0.6B](https://ollama.com/library/qwen3:0.6b) is a small option for basic chat, with limited reliability on complex tool tasks. For the larger Qwen3 8B GGUF model, the [official model card](https://huggingface.co/Qwen/Qwen3-8B-GGUF) provides:
+
+```bash
+ollama run hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+```
+
+After downloading, this command opens an interactive Ollama chat. Enter `/bye` to leave it. Keep the Ollama application/server running and choose **`hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M`** in LiteAgent; `qwen3:8b` is a separate ID and requires its own download. You can use `ollama pull` with either ID when you only want to download it. See the [Ollama CLI reference](https://docs.ollama.com/cli).
+
+If the Ollama app is already running, do not launch a second server. LiteAgent does not install Ollama or bundle model weights. Downloads require internet access. The adapter defaults to a 16K context and preserves the model’s sampling defaults unless you override temperature; memory requirements and tool reliability vary by model and hardware.
+
+### Remote providers
 
 Choose **OpenAI Chat** for Chat Completions-compatible servers, or **OpenAI Responses / Codex models** for models served through the Responses API. Claude uses Anthropic Messages. Responses requests use `store: false` and retain encrypted reasoning items internally across tool calls. Model availability depends on API access. LiteAgent does not reuse Codex, ChatGPT or Claude Code subscription/login sessions; configure API credentials separately.
 
@@ -197,6 +215,8 @@ This lightweight client does not launch stdio processes, implement the legacy HT
 
 ## Automation API
 
+`GET /api/health` identifies the local app and its data directory for desktop relaunches. `POST /api/shutdown` requires the same local host/origin checks and `X-LiteAgent: 1` header as other writes; it acknowledges shutdown, then cancels active work and closes the service. The UI exposes this action as **Quit LiteAgent**.
+
 The local API still requires `X-LiteAgent: 1` for writes. `POST /api/connections/models` discovers models for an unsaved provider/endpoint/key, optionally reusing a matching saved connection's key by ID. It does not modify settings. `POST /api/chat` accepts an optional `request_id`; retrying the same payload with the same ID returns the recorded run, even after a restart. Reusing the ID for another payload is rejected. The web chat retains the ID after a failed transmission until the submission succeeds or changes.
 
 `GET /api/schedules`, `POST /api/schedules` and `POST /api/schedules/ID` expose schedule definitions and pause/resume/run/delete actions. Creation also accepts a `request_id` to prevent duplicate jobs after a lost response, including when a fresh chat was created. Generation overrides use `PATCH /api/generation`, while connections and MCP servers have separate credential-preserving endpoints. Stop remains available while model discovery is in flight.
@@ -211,6 +231,7 @@ browser-profile/    Agent browser cookies and sessions
 downloads/          Downloaded files
 drivers/            Cached ChromeDriver
 chromedriver.log    Driver diagnostics
+liteagent.log       Windows desktop server diagnostics
 ```
 
 State uses atomic file replacement. On POSIX, the state file has `0600` permissions. Provider keys and MCP bearer tokens are stored locally without encryption; Windows user-profile permissions apply. The data directory is excluded from packages and should not be committed or shared.
@@ -230,7 +251,7 @@ LITEAGENT_BROWSER_TEST=1 go test ./internal/app -run 'TestBrowserIntegration|Tes
 
 Browser tests operate real headless Chrome against local fixtures and may download a matching driver. Tests also cover provider reasoning payloads, signed Claude thinking preservation, reset boundaries, duplicate submissions, credential redaction, profile activation, MCP JSON/SSE sessions and cancellation, cron/DST behavior, failure pausing, restart recovery and fair scheduling. `TestWorkspaceUI` exercises the settings, glass palette, model popup and management forms in real Chrome at desktop/mobile sizes. Mock model tests do not establish the reasoning quality of a real model.
 
-The build script needs Bash and Python 3 for packaging. It generates Linux and Windows AMD64 executables, ZIPs and SHA256 checksums. Binary sizes exclude Chrome, ChromeDriver, local data and model weights.
+The build script needs Bash and Python 3 for packaging. It generates Linux and Windows AMD64 executables, ZIPs and SHA256 checksums. Windows packages include both the desktop `LiteAgent.exe` and terminal `LiteAgent-console.exe`. Binary sizes exclude Chrome, ChromeDriver, local data and model weights.
 
 ## Code and dependencies
 

@@ -16,6 +16,7 @@ const renderedTurns = new Map();
 const deletingChatIDs = new Set();
 let modelSource = '', availableModels = [], modelOptionsSignature = '';
 let modelsLoading = false, modelSaving = false, modelsRequest = 0;
+let modelsState = 'checking', lastModelsCheck = 0, serverStopping = false;
 let pendingSubmission = null, pendingSchedule = null;
 let settingsSource = null;
 let scheduleSignature = '';
@@ -51,19 +52,21 @@ async function busy(button, label, work) {
   }
 }
 function updateControls() {
-  const active = !!state?.active;
+  const active = !serverStopping && !!state?.active;
   $('send').hidden = active && !$('message').value.trim().startsWith('/');
-  $('stop').hidden = !active;
-  if (!$('send').hasAttribute('aria-busy')) $('send').disabled = !initialized || modelSaving;
+  $('stop').hidden = serverStopping || !active;
+  if (!$('send').hasAttribute('aria-busy')) $('send').disabled = serverStopping || !initialized || modelSaving || !ollamaReady() && !$('message').value.trim().startsWith('/');
   $('reasoning-select').disabled = !initialized || modelSaving || active;
   $('show-settings').disabled = !initialized || modelSaving || active;
   $('model-select').disabled = !initialized || modelsLoading || modelSaving || active;
-  $('model-menu-toggle').disabled = !initialized || modelSaving;
+  $('model-menu-toggle').disabled = serverStopping || !initialized || modelSaving;
   $('refresh-models').disabled = !initialized || modelsLoading || modelSaving;
   $('model-select').title = active ? 'Finish or stop the current reply before switching models.' : state?.config.model || 'Model for all chats';
   const run = state?.runs.find(run => run.id === state.active);
   const lastTool = run?.events.filter(event => event.kind === 'tool').at(-1);
   $('run-status').textContent = active ? (lastTool ? toolNames[lastTool.name] || 'Working…' : 'Thinking…') : '';
+  $('quit-app').hidden = !state?.can_shutdown;
+  renderOllamaSetup();
 }
 function providerSource(config) {
   return JSON.stringify([config.provider, config.base_url]);
@@ -113,15 +116,16 @@ function renderModelDescription() {
   }
   $('model-reasoning').hidden = !reasoning;
   $('model-description').hidden = !profile.summary;
-  $('about-model').hidden = !profile.summary;
+  $('about-model').hidden = !profile.summary || !ollamaReady();
   renderComposerModel();
 }
 function renderModelOptions() {
   if (!state || modelSaving) return;
   renderModelDescription();
   const selected = state.config.model;
-  const models = [...new Set([selected, ...availableModels])];
-  const signature = JSON.stringify([state.config.provider, selected, models]);
+  const local = state.config.provider === 'ollama';
+  const models = local ? availableModels : [...new Set([selected, ...availableModels])];
+  const signature = JSON.stringify([state.config.provider, selected, models, modelsState]);
   if (signature === modelOptionsSignature) return;
   modelOptionsSignature = signature;
   const options = models.map(model => {
@@ -131,37 +135,50 @@ function renderModelOptions() {
     option.title = model;
     return option;
   });
+  if (local && !models.includes(selected)) {
+    const placeholder = el('option', ollamaPickerLabel()); placeholder.value = ''; placeholder.disabled = true;
+    options.unshift(placeholder);
+  }
   $('model-select').replaceChildren(...options);
-  $('model-select').value = selected;
+  $('model-select').value = local && !models.includes(selected) ? '' : selected;
 }
 function syncModelPicker() {
   const source = providerSource(state.config);
   if (source !== modelSource) {
     modelSource = source;
     availableModels = [];
+    modelsState = 'checking';
     renderModelOptions();
     loadModels();
-  } else renderModelOptions();
+  } else {
+    renderModelOptions();
+    if (state.config.provider === 'ollama' && !state.active && !modelsLoading && !modelSaving && $('model-menu').hidden && Date.now() - lastModelsCheck > 15000) loadModels(true);
+  }
 }
-async function loadModels() {
-  if (!state) return;
+async function loadModels(quiet = false) {
+  if (!state || serverStopping) return;
   const source = modelSource, request = ++modelsRequest;
+  lastModelsCheck = Date.now();
   modelsLoading = true;
   $('refresh-models').setAttribute('aria-busy', 'true');
-  feedback('model-feedback', 'Loading models…');
+  if (quiet !== true) feedback('model-feedback', 'Loading models…');
   updateControls();
   try {
     const result = await api('models');
-    if (request !== modelsRequest || source !== modelSource) return;
+    if (serverStopping || request !== modelsRequest || source !== modelSource) return;
     if (providerSource(result) !== source) {
       await refresh();
       return;
     }
     availableModels = [...new Set(result.models.filter(model => typeof model === 'string' && model.trim()))].sort();
+    modelsState = 'ready';
     renderModelOptions();
-    feedback('model-feedback', availableModels.length ? '' : 'No models listed. Use /onboard or /model MODEL_ID.');
+    feedback('model-feedback', state.config.provider === 'ollama' ? '' : availableModels.length ? '' : 'No models listed. Use /onboard or /model MODEL_ID.');
   } catch (error) {
-    if (request === modelsRequest && source === modelSource) feedback('model-feedback', error.message + ' Use Refresh to retry.', true);
+    if (request === modelsRequest && source === modelSource) {
+      modelsState = 'unreachable'; availableModels = []; renderModelOptions();
+      feedback('model-feedback', state.config.provider === 'ollama' ? '' : error.message + ' Use Refresh to retry.', true);
+    }
   } finally {
     if (request === modelsRequest) {
       modelsLoading = false;
@@ -350,10 +367,11 @@ function renderConversation() {
   if (changed && (nearBottom || changedChat)) scroller.scrollTop = scroller.scrollHeight;
 }
 async function refresh() {
+  if (serverStopping) return;
   const requestedChat = chatID, request = ++revision;
   try {
     const next = await api('state?chat_id=' + encodeURIComponent(requestedChat || 'new'));
-    if (request !== revision || requestedChat !== chatID) return;
+    if (serverStopping || request !== revision || requestedChat !== chatID) return;
     state = next;
     if (chatID && !state.chats.some(chat => chat.id === chatID)) { selectChat(null); return; }
     initialized = true;
@@ -361,6 +379,7 @@ async function refresh() {
     syncModelPicker();
     renderReasoning(); renderSchedules(); renderManagement(); renderStatus(); renderHistory(); renderConversation(); updateControls(); notifyUpdates(state.alerts || []);
   } catch (error) {
+    if (serverStopping) return;
     $('connection').textContent = 'Connection lost. Retrying…'; $('connection').classList.add('error');
     feedback('chat-feedback', error.message, true);
   }
@@ -375,6 +394,8 @@ $('chat-form').addEventListener('submit', async event => {
   const submittedChat = chatID;
   const submittedText = message;
   if (openCommandUI(message.trim())) { $('message').value = ''; renderCommands(); updateControls(); return; }
+  if (serverStopping) return;
+  if (!message.trim().startsWith('/') && !ollamaReady()) { renderOllamaSetup(); $('ollama-setup').scrollIntoView({block: 'nearest'}); return; }
   feedback('chat-feedback', '');
   await busy($('send'), 'Sending…', async () => {
     try {
@@ -406,8 +427,8 @@ $('model-select').addEventListener('change', changeModel);
 $('refresh-models').addEventListener('click', loadModels);
 $('onboard')?.addEventListener('click',()=>showSettings('connections'));
 $('message').addEventListener('input', () => { updateControls(); commandIndex = 0; renderCommands(); });
-async function poll() { await refresh(); setTimeout(poll, state?.active ? 800 : 3000); }
-window.addEventListener('DOMContentLoaded', () => { initExtras(); initManagement(); initNotifications(); poll(); });
+async function poll() { await refresh(); setTimeout(poll, !serverStopping && state?.active ? 800 : 3000); }
+window.addEventListener('DOMContentLoaded', () => { initExtras(); initManagement(); initNotifications(); initSetup(); poll(); });
 
 const commands = [
   ['/help', 'All commands'], ['/new', 'New conversation'], ['/reset', 'Fresh context; keep history'],
@@ -456,7 +477,8 @@ function reasoningLabel(mode) {
 }
 function renderComposerModel() {
   if (!state) return;
-  const name = modelProfile(state.config.model, state.config.provider).name, reasoning = reasoningLabel(currentReasoning());
+  const name = ollamaReady() ? modelProfile(state.config.model, state.config.provider).name : ollamaPickerLabel();
+  const reasoning = ollamaReady() ? reasoningLabel(currentReasoning()) : '';
   $('composer-model').textContent = name;
   $('composer-reasoning').textContent = reasoning;
   $('model-menu-toggle').setAttribute('aria-label', 'Model: ' + name + '. Reasoning: ' + reasoning + '. Change model and reasoning');

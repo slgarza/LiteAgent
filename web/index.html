@@ -12,6 +12,7 @@
   <script defer src="./app.js"></script>
   <script defer src="./manage.js"></script>
   <script defer src="./notifications.js"></script>
+  <script defer src="./setup.js"></script>
 </head>
 <body>
   <a class="skip" href="#message">Skip to message</a>
@@ -24,6 +25,7 @@
       <button type="button" id="open-settings" class="text-button help-button">Settings</button>
       <button type="button" id="show-schedules" class="text-button help-button">Schedules</button>
       <button type="button" id="help" class="text-button help-button">Commands</button>
+      <button type="button" id="quit-app" class="text-button help-button" hidden>Quit LiteAgent</button>
       <p class="connection" id="connection" role="status">Connecting…</p>
     </aside>
     <main id="main" class="main-shell">
@@ -33,6 +35,23 @@
       </header>
       <noscript><p>Enable JavaScript to chat with LiteAgent, or use the CLI.</p></noscript>
       <div id="message-scroll" class="message-scroll">
+        <section id="ollama-setup" class="ollama-setup" aria-labelledby="ollama-setup-title" hidden>
+          <p class="eyebrow">LOCAL MODELS</p>
+          <h1 id="ollama-setup-title">Set up Ollama</h1>
+          <p id="ollama-setup-description"></p>
+          <p class="ollama-endpoint">Ollama address: <code id="ollama-endpoint"></code></p>
+          <div id="ollama-install-steps">
+            <ol>
+              <li><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download Ollama</a> and open it. If it is already installed, start it; you can also use <code>ollama serve</code>.</li>
+              <li>In PowerShell or a terminal on the computer running Ollama, download a small model:</li>
+            </ol>
+            <div class="ollama-command"><code id="ollama-pull-command">ollama pull qwen3:0.6b</code><button type="button" id="copy-ollama-command">Copy</button></div>
+            <p class="muted">A small model for basic chat. Complex tasks and tool use may need a more capable model. Models are downloaded separately.</p>
+          </div>
+          <div class="ollama-setup-actions"><button type="button" id="check-ollama">Check again</button><button type="button" id="choose-ollama" class="primary" hidden>Choose installed model</button><button type="button" id="setup-api-provider" class="text-button">Use an API provider</button></div>
+          <p class="muted">Installed models refresh automatically while LiteAgent is idle. Only the selected model is requested when you send a message.</p>
+          <p id="ollama-setup-feedback" class="feedback" role="status"></p>
+        </section>
         <div id="messages" class="messages"><div class="welcome"><h1>What can I help with?</h1><p>Just ask. Your browser, skills and reminders are here.</p><button id="onboard" type="button" class="text-button">Connect a model</button></div></div>
       </div>
       <div class="composer-area">

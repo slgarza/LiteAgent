@@ -39,6 +39,7 @@ go vet ./...
 node --check web/app.js
 node --check web/manage.js
 node --check web/notifications.js
+node --check web/setup.js
 LITEAGENT_BROWSER_TEST=1 go test ./internal/app -run 'TestBrowserIntegration|TestAgentBrowserE2E|TestWorkspaceUI' -v
 python3 scripts/check-repository.py --staged
 ./scripts/build.sh

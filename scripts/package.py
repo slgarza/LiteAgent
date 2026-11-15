@@ -14,7 +14,7 @@ common += [(dist / 'GO-LICENSE.txt', 'GO-LICENSE.txt'), (root / 'web/LICENSES.tx
 common += [(path, str(path.relative_to(root))) for path in sorted((root / 'docs').rglob('*'))
            if path.is_file() and path.suffix in {'.md', '.png'}]
 for name, files in [
-    ('LiteAgent-windows-amd64.zip', [dist / 'LiteAgent.exe', dist / 'Start-LiteAgent.bat']),
+    ('LiteAgent-windows-amd64.zip', [dist / 'LiteAgent.exe', dist / 'LiteAgent-console.exe', dist / 'Start-LiteAgent.bat']),
     ('LiteAgent-linux-amd64.zip', [dist / 'liteagent']),
 ]:
     # Refresh the unpacked distribution without touching runtime data folders.
@@ -36,7 +36,7 @@ for name, files in [
     with zipfile.ZipFile(dist / name, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path, relative in packaged:
             archive.write(path, relative)
-paths = [dist / name for name in ['LiteAgent.exe', 'liteagent', 'LiteAgent-windows-amd64.zip', 'LiteAgent-linux-amd64.zip']]
+paths = [dist / name for name in ['LiteAgent.exe', 'LiteAgent-console.exe', 'liteagent', 'LiteAgent-windows-amd64.zip', 'LiteAgent-linux-amd64.zip']]
 (dist / 'SHA256SUMS.txt').write_text(''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in paths))
 for path in paths:
     print(f'{path.name}: {path.stat().st_size / 1024 / 1024:.2f} MiB')

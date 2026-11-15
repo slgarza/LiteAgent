@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -19,6 +20,9 @@ func TestWorkspaceUI(t *testing.T) {
 		t.Skip("set LITEAGENT_BROWSER_TEST=1 for real Chrome UI")
 	}
 	a := newTestApp(t)
+	var modelListMode atomic.Int32
+	quit := make(chan struct{}, 1)
+	a.shutdown = func() { quit <- struct{}{} }
 	slowStarted, slowCancelled := make(chan struct{}), make(chan struct{})
 	replyStarted, replyCancelled, releaseReply := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +36,16 @@ func TestWorkspaceUI(t *testing.T) {
 			case <-releaseReply:
 			}
 		case "/api/tags":
-			fmt.Fprint(w, `{"models":[{"name":"qwen3:8b"},{"name":"qwen3:0.6b"}]}`)
+			switch modelListMode.Load() {
+			case 1:
+				http.Error(w, "Ollama unavailable", 503)
+			case 2:
+				fmt.Fprint(w, `{"models":[]}`)
+			case 3:
+				fmt.Fprint(w, `{"models":[{"name":"hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M"}]}`)
+			default:
+				fmt.Fprint(w, `{"models":[{"name":"qwen3:8b"},{"name":"qwen3:0.6b"}]}`)
+			}
 		case "/models":
 			if r.Header.Get("Authorization") != "Bearer ui-secret" {
 				http.Error(w, "missing test credential", 401)
@@ -61,7 +74,7 @@ func TestWorkspaceUI(t *testing.T) {
 	defer browser.Close()
 	config := defaultConfig()
 	config.Headless = true
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	if cache := os.Getenv("LITEAGENT_TEST_DATA"); cache != "" {
 		var err error
@@ -362,7 +375,45 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	if string(script("return !document.getElementById('notification-sound').checked && document.querySelectorAll('.notification-toast').length===0")) != "true" {
 		t.Fatal("notification preferences or seen alerts did not survive reload")
 	}
-	script("document.getElementById('settings-dialog').close();document.getElementById('new-chat').click();document.getElementById('message').value='UI active reply';document.getElementById('chat-form').requestSubmit()")
+	script("document.getElementById('settings-dialog').close();document.getElementById('new-chat').click()")
+	// Installed models can appear and disappear without changing the connection.
+	modelListMode.Store(1)
+	script("loadModels()")
+	await("!document.getElementById('ollama-setup').hidden && document.getElementById('composer-model').textContent==='Connect Ollama' && !modelsLoading")
+	if string(script("return document.getElementById('send').disabled && document.getElementById('model-select').value==='' && [...document.getElementById('model-select').options].every(o=>o.value==='')")) != "true" {
+		t.Fatal("an unavailable Ollama model was presented as usable")
+	}
+	script("document.getElementById('message').value='/status';document.getElementById('chat-form').requestSubmit()")
+	await("document.getElementById('status-dialog').open")
+	script("document.getElementById('status-dialog').close()")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
+	screenshot("ollama-setup-desktop.png")
+	modelListMode.Store(2)
+	script("document.getElementById('check-ollama').click()")
+	await("document.getElementById('ollama-setup-title').textContent==='Download your first model' && !modelsLoading")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 390, "height": 844})
+	if string(script("return document.documentElement.scrollWidth<=innerWidth && document.getElementById('send').disabled")) != "true" {
+		t.Fatal("empty-model setup overflowed or enabled sending")
+	}
+	screenshot("ollama-empty-mobile.png")
+	modelListMode.Store(3)
+	// Advance the refresh clock; polling must discover the installation itself.
+	script("lastModelsCheck=0;refresh()")
+	await("document.getElementById('ollama-setup-title').textContent==='Choose an installed model' && !modelsLoading")
+	script("document.getElementById('choose-ollama').click()")
+	await("!document.getElementById('model-menu').hidden")
+	script("document.getElementById('model-select').value='hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M';document.getElementById('model-select').dispatchEvent(new Event('change'))")
+	await("document.getElementById('ollama-setup').hidden && !document.getElementById('send').disabled && document.getElementById('composer-model').textContent==='hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M'")
+	if a.store.Snapshot().Config.Model != "hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M" {
+		t.Fatal("discovery did not preserve the exact installed model ID")
+	}
+	modelListMode.Store(0)
+	if w := callAPI(t, a, "PUT", "/api/config", localConfig, nil); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	script("document.getElementById('close-model-menu').click();refresh().then(()=>loadModels())")
+	await("document.getElementById('composer-model').textContent==='Qwen3 · 0.6B' && !modelsLoading && !document.getElementById('send').disabled")
+	script("document.getElementById('message').value='UI active reply';document.getElementById('chat-form').requestSubmit()")
 	waitChatSignal(t, replyStarted)
 	await("!document.getElementById('stop').hidden && [...document.querySelectorAll('.history-item')].some(b=>b.title==='UI active reply')")
 	script("document.getElementById('model-menu-toggle').click()")
@@ -398,5 +449,12 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	if st := a.store.Snapshot(); len(st.Chats) != 0 || len(st.Runs) != 0 || len(st.Schedules) != 0 {
 		t.Fatal("deleting the active chat left records behind")
 	}
-	t.Log("Real Chrome: composer model/reasoning menu, API models without profiles, keyboard dismissal, responsive layout, settings, notifications, schedules, deleting active and other chats")
+	script("document.getElementById('quit-app').click()")
+	await("document.getElementById('connection').textContent==='LiteAgent stopped' && document.getElementById('send').disabled")
+	select {
+	case <-quit:
+	default:
+		t.Fatal("Quit did not reach the server")
+	}
+	t.Log("Real Chrome: composer, settings, notifications, schedules, chat deletion, missing/empty/installed Ollama models, automatic discovery and Quit")
 }

@@ -11,6 +11,7 @@ go vet ./...
 node --check web/app.js
 node --check web/manage.js
 node --check web/notifications.js
+node --check web/setup.js
 ```
 
 Use a separate port/data directory from the normal app. Tests use temporary directories and local fake providers without live credentials or model inference.
@@ -27,7 +28,7 @@ go test ./internal/app \
   -run 'TestBrowserIntegration|TestAgentBrowserE2E|TestWorkspaceUI' -v
 ```
 
-`TestWorkspaceUI` covers composer controls, model discovery, settings, notifications, schedules, chat deletion and responsive layouts. Its screenshots use fake conversations/providers. Permission prompts and audio devices are stubbed: the test checks UI behavior and audio scheduling, not physical speaker playback.
+`TestWorkspaceUI` covers composer controls, model discovery, missing/empty Ollama setup, automatic discovery of newly installed models, settings, notifications, schedules, chat deletion, Quit and responsive layouts. Its screenshots use fake conversations/providers. Permission prompts and audio devices are stubbed: the test checks UI behavior and audio scheduling, not physical speaker playback. Lifecycle tests check shutdown authorization, cancellation, socket/storage-lock release and desktop instance discovery.
 
 Inspect each screenshot before copying selected images into `docs/screenshots/`. Never publish live-user captures. Record fixture provenance in the screenshot index.
 
@@ -58,3 +59,22 @@ LITEAGENT_GO_BIN=/path/to/go ./scripts/build.sh
 The second form selects a toolchain. `dist/` receives Linux/Windows AMD64 binaries, unpacked distributions, ZIPs and checksums. An explicit package list includes application binaries, docs and licenses, never runtime folders. Replacement does not delete existing local runtime directories. Generated packages are excluded from Git.
 
 Chrome, browser sessions, models and credentials are not included. Windows is cross-compiled and still needs runtime validation.
+
+### Windows desktop and console builds
+
+On Windows, build the production executable with:
+
+```powershell
+go build -tags desktop -ldflags "-H=windowsgui" -o LiteAgent.exe ./cmd/liteagent
+```
+
+The [Go linker flag](https://pkg.go.dev/cmd/link) chooses the Windows GUI subsystem. The Windows-only `desktop` build tag enables native error dialogs, local diagnostics and reopening an existing instance. ChromeDriver and the browser launcher hide their child consoles. The server runs until **Quit LiteAgent**, process termination or system shutdown; closing a browser tab does not stop it.
+
+Ordinary `go run` and builds keep the development console. Build the terminal client with:
+
+```powershell
+go build -o LiteAgent-console.exe ./cmd/liteagent
+.\LiteAgent-console.exe chat
+```
+
+`scripts/build.sh` cross-compiles both Windows variants. Check the resulting PE subsystem (GUI for the desktop executable, console for the terminal executable), then validate launch, relaunch, startup errors, ChromeDriver and Quit on real Windows before claiming platform support. Wine checks do not replace that validation.

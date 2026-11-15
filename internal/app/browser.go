@@ -86,6 +86,7 @@ func (b *Browser) Start(ctx context.Context, c Config) error {
 		return err
 	}
 	b.cmd = exec.Command(driver, fmt.Sprintf("--port=%d", port), "--allowed-ips=127.0.0.1")
+	hideChildConsole(b.cmd)
 	b.cmd.Stdout = b.logFile
 	b.cmd.Stderr = b.logFile
 	if err = b.cmd.Start(); err != nil {

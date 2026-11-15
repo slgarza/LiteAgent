@@ -31,6 +31,7 @@ type App struct {
 	runDone       <-chan struct{}
 	deletingChats map[string]bool
 	root          context.Context
+	shutdown      context.CancelFunc
 	wg            sync.WaitGroup
 	requestID     string
 	requestHash   string
@@ -69,6 +70,10 @@ func localHost(host string) bool {
 
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		sendJSON(w, 200, map[string]string{"application": "LiteAgent", "version": Version, "data_dir": a.dir})
+	})
+	mux.HandleFunc("POST /api/shutdown", a.shutdownServer)
 	mux.HandleFunc("GET /api/state", a.state)
 	mux.HandleFunc("PUT /api/config", a.config)
 	mux.HandleFunc("PATCH /api/generation", a.generation)
@@ -171,7 +176,7 @@ func (a *App) state(w http.ResponseWriter, r *http.Request) {
 	if st.Chats == nil {
 		st.Chats = []Chat{}
 	}
-	sendJSON(w, 200, map[string]any{"config": st.Config, "api_key_set": hasKey, "skills": st.Skills, "runs": st.Runs, "chats": st.Chats, "notices": notices, "alerts": alerts, "active": active, "active_chat_id": activeChatID, "downloads_dir": filepath.Join(a.dir, "downloads"), "connections": st.Connections, "mcp_servers": st.MCPServers, "schedules": st.Schedules, "reasoning_modes": reasoningModes(st.Config.Provider), "version": Version})
+	sendJSON(w, 200, map[string]any{"config": st.Config, "api_key_set": hasKey, "skills": st.Skills, "runs": st.Runs, "chats": st.Chats, "notices": notices, "alerts": alerts, "active": active, "active_chat_id": activeChatID, "downloads_dir": filepath.Join(a.dir, "downloads"), "connections": st.Connections, "mcp_servers": st.MCPServers, "schedules": st.Schedules, "reasoning_modes": reasoningModes(st.Config.Provider), "version": Version, "can_shutdown": a.shutdown != nil})
 }
 
 func (a *App) config(w http.ResponseWriter, r *http.Request) {
