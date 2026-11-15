@@ -32,6 +32,20 @@ go test ./internal/app \
 
 Inspect each screenshot before copying selected images into `docs/screenshots/`. Never publish live-user captures. Record fixture provenance in the screenshot index.
 
+## VS Code bridge
+
+The optional extension is plain JavaScript with Node/VS Code built-ins and no runtime npm dependencies. Its bridge translates the OpenAI Chat subset used by LiteAgent into the public `vscode.lm` API. Credentials of other extensions are never read. The generated VSIX stays in ignored `dist/`.
+
+```bash
+node --test extensions/vscode-bridge/bridge.test.js
+python3 scripts/test-vscode-bridge.py
+python3 scripts/build-vscode-bridge.py
+```
+
+Packaging needs Node.js 22+, npm and Python, and downloads pinned `@vscode/vsce`. The host test requires desktop VS Code and a display; `LITEAGENT_CODE_BIN` can select its executable. It creates temporary user/extension directories and registers a synthetic language-model provider, so it does not use a signed-in account. A completion marker is required for success. Protocol tests cover authentication, origin/host checks, discovery, tool-result translation, access/quota failures, context limits and cancellation. Chrome checks the Settings flow separately. Real-provider behavior and Windows extension runtime still need manual verification.
+
+See [VS Code setup](VSCODE.md) for the supported protocol and lifecycle.
+
 ## Document changes
 
 Add user-visible changes under Unreleased in [CHANGELOG.md](../CHANGELOG.md). Update the affected guides/examples and describe concrete behavior and validation in commits. At release, date the version and align `internal/app/version.go`, README and user guide. State any untested platform behavior.

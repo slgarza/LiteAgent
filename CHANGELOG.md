@@ -6,6 +6,8 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 
 ### Added
 
+- Optional VS Code extension and a named VS Code provider in Settings, routing text and tool calls through models exposed by the public Language Model API. Includes local token authentication, explicit model authorization, discovery, context checks, cancellation and timeout handling.
+- Local VSIX packaging, protocol tests, an isolated VS Code host test with a synthetic model, and setup documentation/screenshots. Generated extensions are excluded from Git.
 - Windows desktop build without a console, startup error dialogs and a local diagnostic log; the console build remains available for development and terminal commands.
 - Quit LiteAgent in the sidebar, with graceful server shutdown and cancellation of active work. Reopening the desktop executable connects to the existing instance when its data directory matches.
 - Ollama setup guidance for unavailable servers, empty model lists and missing selected models, with a small-model download command and a link to API settings.

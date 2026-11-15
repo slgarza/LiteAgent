@@ -19,6 +19,9 @@ type Connection struct {
 }
 
 func (p Connection) config(base Config) Config {
+	if p.Provider == "vscode" && base.Provider != "vscode" {
+		base.MaxTokens = 0
+	}
 	if base.Provider != p.Provider || base.BaseURL != p.BaseURL || base.Model != p.Model {
 		base.Reasoning = ""
 		base.Thinking = nil

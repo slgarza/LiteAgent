@@ -115,6 +115,7 @@ Local models on CPU may take several minutes to process the first message, espec
 | `openai` | `https://api.openai.com/v1` | OpenAI or compatible Chat Completions API and a model supporting tools |
 | `openai-responses` | `https://api.openai.com/v1` | OpenAI API key and a Responses-compatible model (including supported Codex models) |
 | `anthropic` | `https://api.anthropic.com` | Anthropic API key and model ID |
+| `vscode` | `http://127.0.0.1:8788/v1` | Running LiteAgent VS Code bridge, its local token and an exposed model |
 
 ### First local model
 
@@ -138,6 +139,12 @@ ollama run hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
 After downloading, this command opens an interactive Ollama chat. Enter `/bye` to leave it. Keep the Ollama application/server running and choose **`hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M`** in LiteAgent; `qwen3:8b` is a separate ID and requires its own download. You can use `ollama pull` with either ID when you only want to download it. See the [Ollama CLI reference](https://docs.ollama.com/cli).
 
 If the Ollama app is already running, do not launch a second server. LiteAgent does not install Ollama or bundle model weights. Downloads require internet access. The adapter defaults to a 16K context and preserves the model’s sampling defaults unless you override temperature; memory requirements and tool reliability vary by model and hardware.
+
+### VS Code model bridge
+
+Select **VS Code · model bridge** in connection Settings to route requests through models exposed by VS Code's public Language Model API. Install and start the optional extension, copy its bridge token into LiteAgent, then fetch and select a model. Keep VS Code open. If needed, authorize the model using **LiteAgent: Authorize and Test a Model** in VS Code. See [installation and troubleshooting](VSCODE.md).
+
+The bridge token authenticates a local connection. The selected provider's account access and usage limits still apply. The bridge does not import subscription credentials or read other chat panels. It supports text and tool calls, uses default reasoning/sampling/output settings, and sends system instructions as initial user content because the public consumer API exposes only user/assistant roles. LiteAgent continues to execute its own tools.
 
 ### Remote providers
 

@@ -9,6 +9,7 @@ A local assistant with a web chat, browser automation, text-file tools, saved pr
 ## Features
 
 - Ollama, OpenAI-compatible APIs, OpenAI Responses and Anthropic.
+- VS Code as a model provider through the optional local bridge extension.
 - Model and reasoning controls in the message composer.
 - Automatic discovery of installed Ollama models and first-run setup guidance.
 - Windows production executable without a console; Quit from the interface.
@@ -23,7 +24,7 @@ A local assistant with a web chat, browser automation, text-file tools, saved pr
 | --- | --- |
 | Source downloaded from GitHub | Go **version 1.25 or newer** to compile or run it |
 | An already compiled Linux/Windows package | Extract it and run the executable; Go, Python and Node.js are not required |
-| Either option | Configure a remote model with an API key, or a local model through Ollama |
+| Either option | Configure a remote API, a local model through Ollama, or the optional VS Code model bridge |
 | Browser automation | Chrome installed; ChromeDriver is discovered or downloaded on first use |
 
 **Go**, also called **Golang**, is the programming language and compiler used to build LiteAgent. “Go 1.25” means version 1.25, not a separate application you must keep running alongside a compiled LiteAgent.
@@ -108,6 +109,12 @@ ollama run hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
 ```
 
 This downloads the model and starts a terminal chat. Enter `/bye` to leave that chat while keeping Ollama running. In LiteAgent, select the exact `hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M` entry; it is a different model ID from `qwen3:8b`. See the [Qwen model card](https://huggingface.co/Qwen/Qwen3-8B-GGUF) and [Ollama CLI reference](https://docs.ollama.com/cli). Model downloads require internet access; larger models require more memory. LiteAgent does not bundle Ollama or model weights.
+
+## Route requests through VS Code
+
+Install the optional LiteAgent bridge extension, start it from VS Code's command palette and add a **VS Code · model bridge** connection in LiteAgent. It fetches the models exposed by VS Code and routes requests to the model you select. Keep VS Code open; provider permissions and quotas apply. The bridge does not read chat panels or import account credentials.
+
+Build the extension locally with `python3 scripts/build-vscode-bridge.py` (Windows: `py scripts/build-vscode-bridge.py`). See the [setup guide](docs/VSCODE.md) for requirements, installation and model authorization.
 
 ## Run an already compiled package
 

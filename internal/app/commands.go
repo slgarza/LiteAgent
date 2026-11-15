@@ -122,11 +122,14 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 		switch wizard.Step {
 		case 0:
 			provider := strings.ToLower(text)
-			if provider != "ollama" && provider != "openai" && provider != "anthropic" && provider != "openai-responses" {
-				reply = "Reply with **ollama**, **openai**, **openai-responses**, or **anthropic**."
+			if provider != "ollama" && provider != "openai" && provider != "anthropic" && provider != "openai-responses" && provider != "vscode" {
+				reply = "Reply with **ollama**, **openai**, **openai-responses**, **anthropic**, or **vscode**."
 				break
 			}
 			wizard.Config.Provider = provider
+			if provider == "vscode" {
+				wizard.Config.MaxTokens = 0
+			}
 			wizard.Config.Reasoning = ""
 			wizard.Config.Thinking = nil
 			wizard.Config.Temperature = nil
@@ -177,7 +180,7 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 			}
 		}
 		a.wizards[chatID] = &onboarding{Config: c}
-		reply = "Let's connect your model. Which provider? Reply **ollama**, **openai**, **openai-responses**, or **anthropic**. You can send `/cancel` at any point."
+		reply = "Let's connect your model. Which provider? Reply **ollama**, **openai**, **openai-responses**, **anthropic**, or **vscode**. You can send `/cancel` at any point."
 	case "/status":
 		activity := "idle"
 		if a.active != "" {
@@ -349,6 +352,9 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 			c.Thinking = nil
 			c.Temperature = nil
 			c.Provider = value
+			if value == "vscode" {
+				c.MaxTokens = 0
+			}
 			c.BaseURL = providerURL(value)
 			c.APIKey = ""
 		case "url":
@@ -436,6 +442,8 @@ func providerURL(provider string) string {
 		return "https://api.openai.com/v1"
 	case "anthropic":
 		return "https://api.anthropic.com"
+	case "vscode":
+		return "http://127.0.0.1:8788/v1"
 	}
 	return ""
 }

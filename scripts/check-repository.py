@@ -14,7 +14,7 @@ ROOT_FILES = {
     '.gitignore', '.gitattributes', 'go.mod', 'go.sum',
     'README.md', 'AGENTS.md', 'CHANGELOG.md', 'LICENSE', 'THIRD_PARTY_NOTICES.txt',
 }
-SCRIPTS = {'build.sh', 'package.py', 'check-repository.py', 'Start-LiteAgent.bat'}
+SCRIPTS = {'build.sh', 'package.py', 'check-repository.py', 'Start-LiteAgent.bat', 'build-vscode-bridge.py', 'test-vscode-bridge.py'}
 PRIVATE_PARTS = {
     'data', 'dist', '.qa', '.hallmark', '.codex', '.claude', '.env',
     'browser-profile', 'downloads', 'drivers', 'state.json', 'state.lock',
@@ -40,6 +40,8 @@ def allowed_path(name):
         return path.suffix in {'.go', '.js', '.css', '.html', '.txt'}
     if path.parent == PurePosixPath('scripts'):
         return path.name in SCRIPTS
+    if path.parent == PurePosixPath('extensions/vscode-bridge'):
+        return path.name in {'package.json', 'README.md', 'extension.js', 'bridge.js', 'protocol.js', 'bridge.test.js', 'test-host.js', 'test-fixture.js'}
     if path.parts[0] == 'docs':
         return path.suffix == '.md' or path.parent == PurePosixPath('docs/screenshots') and path.suffix == '.png'
     return False

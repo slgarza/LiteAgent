@@ -11,7 +11,7 @@ import (
 )
 
 func TestModelPickerListsConfiguredProvider(t *testing.T) {
-	for _, provider := range []string{"ollama", "openai", "openai-responses", "anthropic"} {
+	for _, provider := range []string{"ollama", "openai", "openai-responses", "anthropic", "vscode"} {
 		t.Run(provider, func(t *testing.T) {
 			a := newTestApp(t)
 			model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +96,7 @@ func TestModelPickerChangesOnlyModelAndPersists(t *testing.T) {
 }
 
 func TestConnectionModelsBeforeSaving(t *testing.T) {
-	for _, provider := range []string{"ollama", "openai", "openai-responses", "anthropic"} {
+	for _, provider := range []string{"ollama", "openai", "openai-responses", "anthropic", "vscode"} {
 		t.Run(provider, func(t *testing.T) {
 			a := newTestApp(t)
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

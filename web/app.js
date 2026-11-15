@@ -516,6 +516,8 @@ function showSettings(tab = 'generation') {
     $('setting-' + field).value = value ?? '';
   }
   $('setting-context_tokens').disabled = state.config.provider !== 'ollama';
+  $('setting-temperature').disabled = state.config.provider === 'vscode';
+  $('setting-max_tokens').disabled = state.config.provider === 'vscode';
   $('setting-temperature').max = state.config.provider === 'anthropic' ? '1' : '2';
   feedback('settings-feedback', '');
   selectSettingsTab(tab); renderManagement();

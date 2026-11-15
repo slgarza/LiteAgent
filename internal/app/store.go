@@ -44,7 +44,7 @@ func (c Config) Validate() error {
 	if err := c.validateGeneration(); err != nil {
 		return err
 	}
-	if c.Provider != "ollama" && c.Provider != "openai" && c.Provider != "anthropic" && c.Provider != "openai-responses" {
+	if c.Provider != "ollama" && c.Provider != "openai" && c.Provider != "anthropic" && c.Provider != "openai-responses" && c.Provider != "vscode" {
 		return errors.New("invalid provider")
 	}
 	u, err := url.Parse(c.BaseURL)

@@ -54,6 +54,12 @@ func TestWorkspaceUI(t *testing.T) {
 			fmt.Fprint(w, `{"data":[{"id":"test-model"},{"id":"test-agent"}]}`)
 		case "/empty/models":
 			fmt.Fprint(w, `{"data":[]}`)
+		case "/vscode/models":
+			if r.Header.Get("Authorization") != "Bearer bridge-fixture-secret" {
+				http.Error(w, "missing bridge token", 401)
+				return
+			}
+			fmt.Fprint(w, `{"data":[{"id":"fixture/text"},{"id":"fixture/tool"}]}`)
 		case "/slow/models":
 			close(slowStarted)
 			select {
@@ -237,6 +243,17 @@ func TestWorkspaceUI(t *testing.T) {
 	if len(a.store.Snapshot().MCPServers) != 1 {
 		t.Fatal("MCP form did not persist")
 	}
+	script("document.querySelector('[data-settings-tab=connections]').click();document.getElementById('new-connection').click();document.getElementById('connection-provider').value='vscode';document.getElementById('connection-provider').dispatchEvent(new Event('change'))")
+	await("!document.getElementById('connection-vscode-help').hidden && document.getElementById('connection-url').value==='http://127.0.0.1:8788/v1' && document.getElementById('connection-model-feedback').textContent.includes('bridge token')")
+	setURL("/vscode")
+	script("document.getElementById('connection-name').value='UI VS Code';document.getElementById('connection-key').value='bridge-fixture-secret';document.getElementById('connection-key').dispatchEvent(new Event('input'))")
+	await("document.getElementById('connection-model-feedback').textContent.includes('2 models loaded')")
+	script("document.getElementById('connection-model-select').value='fixture/text';document.getElementById('connection-model-select').dispatchEvent(new Event('change'));document.getElementById('connection-activate').checked=false;document.getElementById('connection-form').requestSubmit()")
+	await("document.getElementById('connection-form').hidden")
+	bridgeConnection := a.store.Snapshot().Connections[2]
+	if bridgeConnection.Provider != "vscode" || bridgeConnection.Model != "fixture/text" || bridgeConnection.APIKey != "bridge-fixture-secret" {
+		t.Fatal("VS Code connection did not persist")
+	}
 	// Browser permission prompts and audio devices are stubbed; the actual reminder,
 	// API polling, preferences, sound scheduling and navigation use the real UI.
 	script(`window.testAlerts=[];window.testSounds=0;
@@ -338,6 +355,20 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 		await("document.getElementById('model-menu').hidden")
 		screenshot(fmt.Sprintf("composer-%d.png", width))
 	}
+	if w := callAPI(t, a, "POST", "/api/connections/"+bridgeConnection.ID, map[string]string{"action": "activate"}, nil); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	script("refresh()")
+	await("document.getElementById('composer-model').textContent==='fixture/text' && document.getElementById('composer-reasoning').textContent==='Auto' && !modelsLoading")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
+	script("document.getElementById('show-settings').click()")
+	if string(script("return document.getElementById('setting-temperature').disabled && document.getElementById('setting-max_tokens').disabled && document.getElementById('reasoning-select').options.length===1")) != "true" {
+		t.Fatal("VS Code exposed unsupported generation overrides")
+	}
+	script("document.querySelector('[data-settings-tab=connections]').click();[...document.querySelectorAll('#connections-list .management-card')].find(c=>c.querySelector('strong').textContent==='UI VS Code').querySelector('button').click()")
+	await("document.getElementById('connection-model-feedback').textContent.includes('2 models loaded') && !document.getElementById('connection-vscode-help').hidden && document.getElementById('connection-key').value===''")
+	screenshot("vscode-bridge-settings.png")
+	script("document.getElementById('settings-dialog').close()")
 	if w := callAPI(t, a, "PUT", "/api/config", localConfig, nil); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}

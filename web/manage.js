@@ -131,6 +131,7 @@ function renderManagement() {
     $('mcp-list').append(card);
   }
 }
+function renderBridgeHelp() { $('connection-vscode-help').hidden = $('connection-provider').value !== 'vscode'; }
 function editConnection(connection = {}) {
   $('connection-form').hidden = false; $('connection-form').dataset.id = connection.id || '';
   $('connection-editor-title').textContent = connection.id ? 'Edit connection' : 'New connection';
@@ -139,7 +140,7 @@ function editConnection(connection = {}) {
   $('connection-key').value = ''; $('connection-key').placeholder = connection.key_set ? 'Key saved · leave blank to keep it' : 'API key (optional for local providers)';
   $('connection-clear-key').checked = false; $('connection-activate').checked = !connection.id || state.config.connection_id === connection.id;
   connectionManualModel = false;
-  resetConnectionModels(); loadConnectionModels();
+  renderBridgeHelp(); resetConnectionModels(); loadConnectionModels();
   $('connection-name').focus(); $('connection-form').scrollIntoView({block: 'nearest'});
 }
 function connectionModelSource() {
@@ -196,6 +197,9 @@ async function loadConnectionModels() {
   const savedKey = !source.clear_api_key && state.connections?.some(c => c.id === source.id && c.provider === source.provider && c.base_url === source.base_url && c.key_set);
   if (['api.openai.com', 'api.anthropic.com'].includes(url.hostname) && ((!source.api_key || source.clear_api_key) && !savedKey)) {
     feedback('connection-model-feedback', 'Add your API key to load the models available to your account.'); return;
+  }
+  if (source.provider === 'vscode' && ((!source.api_key || source.clear_api_key) && !savedKey)) {
+    feedback('connection-model-feedback', 'Start the bridge in VS Code and paste its bridge token to load models.'); return;
   }
   const request = ++connectionModelRequest;
   const controller = new AbortController(); connectionModelAbort = controller;
@@ -268,9 +272,9 @@ function initManagement() {
   $('cancel-connection').addEventListener('click', () => { cancelConnectionModels(); $('connection-form').hidden = true; $('connection-key').value = ''; });
   $('connection-provider').addEventListener('change', () => {
     const provider = $('connection-provider').value;
-    $('connection-url').value = {ollama: 'http://127.0.0.1:11434', openai: 'https://api.openai.com/v1', 'openai-responses': 'https://api.openai.com/v1', anthropic: 'https://api.anthropic.com'}[provider];
+    $('connection-url').value = {ollama: 'http://127.0.0.1:11434', openai: 'https://api.openai.com/v1', 'openai-responses': 'https://api.openai.com/v1', anthropic: 'https://api.anthropic.com', vscode: 'http://127.0.0.1:8788/v1'}[provider];
     $('connection-key').value = ''; $('connection-clear-key').checked = false;
-    resetConnectionModels(true); loadConnectionModels();
+    renderBridgeHelp(); resetConnectionModels(true); loadConnectionModels();
   });
   $('connection-url').addEventListener('input', () => resetConnectionModels(true));
   $('connection-url').addEventListener('change', loadConnectionModels);

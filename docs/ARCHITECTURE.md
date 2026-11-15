@@ -37,6 +37,7 @@ flowchart LR
 | `internal/app/connections.go`, `settings.go`, `mcp.go` | Connections, generation settings, MCP |
 | `internal/app/notifications.go` | Completed events for browser alerts |
 | `web/` | Embedded chat, settings and notifications |
+| `extensions/vscode-bridge/` | Optional local HTTP bridge into VS Code's public Language Model API |
 
 Tests live beside implementation. The `web` package embeds only UI files, excluding runtime data and documentation screenshots.
 
@@ -61,3 +62,5 @@ The UI polls state and ignores stale responses using a revision counter. The com
 `web/setup.js` renders Ollama setup and handles Quit. Installed Ollama models refresh while idle; the UI distinguishes an unreachable server, an empty list and a missing saved model. Discovery lists names without downloading weights or invoking inference. The Windows desktop build reuses a matching running instance, logs diagnostics locally and exits through the same cancellation/cleanup path as the console build.
 
 See [Filesystem](FILESYSTEM.md) and [Data](DATA.md) for boundaries and limits.
+
+The `vscode` provider uses the same tool-call wire format as OpenAI Chat, with a separate local endpoint and token. Its optional extension owns model discovery and request translation. VS Code model access remains under the provider's consent/quota controls. Tool execution remains in LiteAgent; no VS Code agent session or other chat history is intercepted. See [VS Code bridge](VSCODE.md).

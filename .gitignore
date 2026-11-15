@@ -26,6 +26,8 @@ secrets*.json
 *.test
 *.exe
 *.zip
+*.vsix
+node_modules/
 *.out
 coverage/
 __pycache__/

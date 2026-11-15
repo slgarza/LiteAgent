@@ -1,0 +1,31 @@
+{
+  "name": "liteagent-vscode-bridge",
+  "displayName": "LiteAgent VS Code Bridge",
+  "description": "Route LiteAgent requests through language models exposed by VS Code.",
+  "version": "0.1.0",
+  "publisher": "slgarza",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {"type": "git", "url": "https://github.com/slgarza/LiteAgent.git"},
+  "engines": {"vscode": "^1.104.0"},
+  "categories": ["AI", "Other"],
+  "main": "./extension.js",
+  "files": ["package.json", "extension.js", "bridge.js", "protocol.js", "README.md", "LICENSE"],
+  "extensionKind": ["ui"],
+  "capabilities": {"untrustedWorkspaces": {"supported": false}, "virtualWorkspaces": false},
+  "contributes": {
+    "commands": [
+      {"command": "liteagentBridge.start", "title": "LiteAgent: Start Model Bridge"},
+      {"command": "liteagentBridge.stop", "title": "LiteAgent: Stop Model Bridge"},
+      {"command": "liteagentBridge.authorize", "title": "LiteAgent: Authorize and Test a Model"},
+      {"command": "liteagentBridge.copyToken", "title": "LiteAgent: Copy Bridge Token"},
+      {"command": "liteagentBridge.rotateToken", "title": "LiteAgent: Rotate Bridge Token"}
+    ],
+    "configuration": {
+      "title": "LiteAgent Model Bridge",
+      "properties": {
+        "liteagentBridge.port": {"type": "number", "default": 8788, "minimum": 1024, "maximum": 65535, "scope": "application", "description": "Local bridge port. Restart the bridge after changing it."},
+        "liteagentBridge.timeoutSeconds": {"type": "number", "default": 900, "minimum": 10, "maximum": 86400, "scope": "application", "description": "Maximum duration of a model request. LiteAgent's own timeout also applies. Restart the bridge after changing it."}
+      }
+    }
+  }
+}

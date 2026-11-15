@@ -7,6 +7,7 @@ This is a local Go application with plain HTML/CSS/JavaScript. Keep the runtime 
 - `cmd/liteagent/main.go` calls `app.Main` and reports process errors.
 - `internal/app/` owns the runtime, API, adapters, tools and tests.
 - `web/` embeds only HTML, CSS, JavaScript and license notices.
+- `extensions/vscode-bridge/` owns the optional VS Code extension and its tests; it uses the public Language Model API.
 - `docs/` contains maintained guides and fixture screenshots.
 - `dist/`, `.qa/`, browser profiles, downloads and local state are generated or private.
 
@@ -45,6 +46,8 @@ python3 scripts/check-repository.py --staged
 ./scripts/build.sh
 ```
 
-Node is only needed for optional syntax checks. Browser tests need Chrome and may download ChromeDriver. See `docs/DEVELOPMENT.md` for cache/screenshot options. Cross-compilation does not establish Windows runtime correctness.
+The Go app does not need Node at runtime. Node is used for optional UI syntax checks and VS Code extension development/packaging. Browser tests need Chrome and may download ChromeDriver. See `docs/DEVELOPMENT.md` for cache/screenshot options. Cross-compilation does not establish Windows runtime correctness.
+
+Bridge changes also require `node --test extensions/vscode-bridge/bridge.test.js` and `python3 scripts/test-vscode-bridge.py` when desktop VS Code is available. The host test must use an isolated profile and synthetic provider. Package with `python3 scripts/build-vscode-bridge.py`; never publish the generated VSIX unless requested. Do not test live account inference automatically. Update the explicit package/repository allowlists when adding extension source files.
 
 Retain the proprietary application license and third-party notices unless the owner explicitly changes them.

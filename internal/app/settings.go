@@ -52,6 +52,9 @@ func (c Config) contextTokens() int {
 	return c.ContextTokens
 }
 func (c Config) validateGeneration() error {
+	if c.Provider == "vscode" && (c.Temperature != nil || c.MaxTokens != 0) {
+		return errors.New("the VS Code bridge uses model defaults; clear temperature and output token overrides")
+	}
 	if !slices.Contains(reasoningModes(c.Provider), c.reasoningMode()) {
 		return fmt.Errorf("reasoning for %s must be one of: %s", c.Provider, strings.Join(reasoningModes(c.Provider), ", "))
 	}

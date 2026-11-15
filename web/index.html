@@ -143,9 +143,10 @@
           <h4 id="connection-editor-title">New connection</h4>
           <div class="form-grid">
             <label>Name<input id="connection-name" required maxlength="120" placeholder="My Claude account"></label>
-            <label>Provider<select id="connection-provider"><option value="ollama">Ollama · local models</option><option value="openai">OpenAI Chat / compatible API</option><option value="openai-responses">OpenAI Responses / Codex models</option><option value="anthropic">Anthropic · Claude</option></select></label>
+            <label>Provider<select id="connection-provider"><option value="ollama">Ollama · local models</option><option value="openai">OpenAI Chat / compatible API</option><option value="openai-responses">OpenAI Responses / Codex models</option><option value="anthropic">Anthropic · Claude</option><option value="vscode">VS Code · model bridge</option></select></label>
             <label>Base URL<input id="connection-url" type="url" required></label>
           </div>
+          <p id="connection-vscode-help" class="muted" hidden>In VS Code, install the LiteAgent bridge extension and run “LiteAgent: Start Model Bridge”. Copy its bridge token into the API key field below, then fetch models. Keep VS Code open. Only models exposed by the VS Code Language Model API are available. If access is requested, run “LiteAgent: Authorize and Test a Model” in VS Code.</p>
           <label>API key<input id="connection-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key"></label>
           <label class="check-label"><input id="connection-clear-key" type="checkbox">Remove saved key</label>
           <div class="connection-model-picker">

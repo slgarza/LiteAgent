@@ -125,11 +125,11 @@ func complete(ctx context.Context, c Config, msgs []Message, defs []ToolDef) (Me
 			calls := []map[string]any{}
 			for _, tc := range m.ToolCalls {
 				var args any = tc.Function.Arguments
-				if c.Provider == "openai" {
+				if c.Provider == "openai" || c.Provider == "vscode" {
 					args = string(tc.Function.Arguments)
 				}
 				call := map[string]any{"type": "function", "function": map[string]any{"name": tc.Function.Name, "arguments": args}}
-				if c.Provider == "openai" {
+				if c.Provider == "openai" || c.Provider == "vscode" {
 					call["id"] = tc.ID
 				}
 				calls = append(calls, call)
@@ -137,7 +137,7 @@ func complete(ctx context.Context, c Config, msgs []Message, defs []ToolDef) (Me
 			v["tool_calls"] = calls
 		}
 		if m.Role == "tool" {
-			if c.Provider == "openai" {
+			if c.Provider == "openai" || c.Provider == "vscode" {
 				v["tool_call_id"] = m.ToolCallID
 			} else {
 				v["tool_name"] = m.ToolName
@@ -198,7 +198,7 @@ func complete(ctx context.Context, c Config, msgs []Message, defs []ToolDef) (Me
 		return Message{}, fmt.Errorf("provider error: %v", res.Error)
 	}
 	m := res.Message
-	if c.Provider == "openai" {
+	if c.Provider == "openai" || c.Provider == "vscode" {
 		if len(res.Choices) == 0 {
 			return m, errors.New("the provider did not return a response")
 		}
