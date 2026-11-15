@@ -49,10 +49,23 @@ go build -o liteagent ./cmd/liteagent
 
 **Windows (PowerShell):**
 
+If you downloaded the GitHub ZIP:
+
+1. In File Explorer, choose **Extract All** for the ZIP. Do not run commands inside the compressed archive.
+2. Open the extracted folder containing **`go.mod`**, **`cmd`**, **`internal`** and **`web`**. Extraction can leave a `LiteAgent-main` folder inside another folder; enter the inner project folder if necessary.
+3. Click File Explorer's address bar, type `powershell` and press Enter. This opens PowerShell in that folder.
+4. Check the location with `Test-Path .\go.mod`. It must return **`True`** before you build.
+
 ```powershell
-go build -o LiteAgent.exe ./cmd/liteagent
-.\LiteAgent.exe
+if (Test-Path .\go.mod) {
+    go build -o LiteAgent.exe ./cmd/liteagent
+    if ($LASTEXITCODE -eq 0) { .\LiteAgent.exe }
+} else {
+    Write-Host "Open PowerShell in the extracted LiteAgent folder containing go.mod."
+}
 ```
+
+**`go.mod file not found`** means the command was run outside the project folder, or the source was not fully extracted. After that failure, **`.\LiteAgent.exe is not recognized`** follows because compilation did not create the executable there. Enter the folder containing `go.mod` and compile again; do not create a new module with `go mod init`.
 
 Once compiled, subsequent launches use only the executable and do not need Go.
 

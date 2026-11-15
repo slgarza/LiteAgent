@@ -7,6 +7,7 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 ### Changed
 
 - Clarified source versus compiled-package startup, Go version requirements, Linux and Windows commands, and the absence of published binaries or a tracked `dist/` directory.
+- Added Windows ZIP extraction and project-folder checks, troubleshooting for missing `go.mod`, and conditional startup after a successful build.
 
 ## 0.3.0 — 2026-11-15
 

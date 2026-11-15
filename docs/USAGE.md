@@ -12,6 +12,8 @@ Configure a remote model with an API key, or a local model through Ollama. Chrom
 
 **GitHub currently contains source code only.** Its **Code → Download ZIP** does not contain the compiled application, and no binary Release has been published. `dist/` is generated locally by the build script and excluded from Git. If you downloaded source, install **Go version 1.25 or newer** and follow the [source instructions in the README](../README.md#run-from-github-source). Go is the language/compiler used to turn the code into an executable.
 
+On Windows, fully extract the source ZIP and open PowerShell in the folder containing `go.mod`, `cmd`, `internal` and `web`. `Test-Path .\go.mod` must return `True`. If Go reports `go.mod file not found`, compilation has not produced `LiteAgent.exe`; fix the working directory first. The README includes an example that starts the executable only after a successful build.
+
 The following instructions apply when you already have a compiled package:
 
 **Windows:** extract `LiteAgent-windows-amd64.zip` and open `LiteAgent.exe`. The chat opens at `http://127.0.0.1:8787`. Keep the console open; `Ctrl+C` stops the server. `Start-LiteAgent.bat` uses a portable `data` folder next to the executable.
