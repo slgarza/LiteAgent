@@ -4,7 +4,9 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 
 ## Unreleased
 
-No changes yet.
+### Changed
+
+- Clarified source versus compiled-package startup, Go version requirements, Linux and Windows commands, and the absence of published binaries or a tracked `dist/` directory.
 
 ## 0.3.0 — 2026-11-15
 

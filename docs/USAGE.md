@@ -8,11 +8,15 @@ A local AI chat with browser and local file tools, persistent skills and schedul
 
 ## Start chatting
 
-You need Chrome installed and a local or remote model. Go, Node and Python are not required to run the packaged application.
+Configure a remote model with an API key, or a local model through Ollama. Chrome is required only for browser automation. Go, Node and Python are not required to run an already compiled package.
+
+**GitHub currently contains source code only.** Its **Code → Download ZIP** does not contain the compiled application, and no binary Release has been published. `dist/` is generated locally by the build script and excluded from Git. If you downloaded source, install **Go version 1.25 or newer** and follow the [source instructions in the README](../README.md#run-from-github-source). Go is the language/compiler used to turn the code into an executable.
+
+The following instructions apply when you already have a compiled package:
 
 **Windows:** extract `LiteAgent-windows-amd64.zip` and open `LiteAgent.exe`. The chat opens at `http://127.0.0.1:8787`. Keep the console open; `Ctrl+C` stops the server. `Start-LiteAgent.bat` uses a portable `data` folder next to the executable.
 
-**Linux:** extract `LiteAgent-linux-amd64.zip` and run `./liteagent`.
+**Linux:** extract `LiteAgent-linux-amd64.zip`, open a terminal in that folder and run `./liteagent`. If extraction did not preserve executable permissions, run `chmod +x liteagent` first.
 
 Open **Settings → Models & API keys** to save and activate an Ollama, OpenAI-compatible or Anthropic connection. Each profile keeps its own endpoint, model and optional key. In the terminal, `/onboard` still guides you through setup. The web `/onboard` opens the connection settings. The **model and reasoning selector beside Send** opens a compact panel to change either setting. **Refresh models** updates the list after installing a model. The selection is saved and applies to all chats; finish or stop an active reply before switching. `/models` and `/model MODEL_ID` remain available in the web chat and CLI, including for providers that do not list models.
 

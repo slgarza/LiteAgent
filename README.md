@@ -15,15 +15,46 @@ A local assistant with a web chat, browser automation, text-file tools, saved pr
 - Settings for connections, timeouts, notifications, schedules, skills and MCP servers.
 - Persistent local conversations, including deletion while a reply is running.
 
-## Run from source
+## What do I need to run it?
 
-Requirements: **Go 1.25+** and a local or remote model that supports tools. Chrome is needed for browser actions; ChromeDriver is discovered or downloaded on first use.
+| What you have | What you need |
+| --- | --- |
+| Source downloaded from GitHub | Go **version 1.25 or newer** to compile or run it |
+| An already compiled Linux/Windows package | Extract it and run the executable; Go, Python and Node.js are not required |
+| Either option | Configure a remote model with an API key, or a local model through Ollama |
+| Browser automation | Chrome installed; ChromeDriver is discovered or downloaded on first use |
+
+**Go**, also called **Golang**, is the programming language and compiler used to build LiteAgent. “Go 1.25” means version 1.25, not a separate application you must keep running alongside a compiled LiteAgent.
+
+**This GitHub repository currently provides source code only.** The `dist/` directory is generated locally and excluded from Git. **Code → Download ZIP** downloads source, not a ready-to-run application. Compiled packages have not been published as GitHub Releases.
+
+## Run from GitHub source
+
+Install Go 1.25 or newer. Clone with Git, or extract **Code → Download ZIP** and open a terminal in the extracted folder containing `go.mod`.
 
 ```bash
 git clone https://github.com/slgarza/LiteAgent.git
 cd LiteAgent
 go run ./cmd/liteagent serve
 ```
+
+`go run` compiles and starts the app in one step on Linux and Windows. To create a reusable executable instead, run the following commands from the project folder.
+
+**Linux:**
+
+```bash
+go build -o liteagent ./cmd/liteagent
+./liteagent
+```
+
+**Windows (PowerShell):**
+
+```powershell
+go build -o LiteAgent.exe ./cmd/liteagent
+.\LiteAgent.exe
+```
+
+Once compiled, subsequent launches use only the executable and do not need Go.
 
 Open **http://127.0.0.1:8787** and configure **Settings → Models & API keys**. You can fetch model IDs before saving a connection. Remote providers require API credentials; subscription logins are not imported.
 
@@ -39,6 +70,15 @@ go run ./cmd/liteagent serve --data /path/to/private-data
 ```
 
 The default data directory is the OS user configuration directory plus `LiteAgent`, separate from this source tree. Request timeout defaults to **900 seconds**; the complete run deadline defaults to **1800 seconds**. Both are configurable in Settings.
+
+## Run an already compiled package
+
+These instructions apply if you have a package built locally with `scripts/build.sh` or supplied separately; the packages are not currently downloadable from this repository.
+
+- **Windows:** extract `LiteAgent-windows-amd64.zip`, then double-click `LiteAgent.exe`.
+- **Linux:** extract `LiteAgent-linux-amd64.zip`, open a terminal in that folder and run `./liteagent`. If the executable permission was lost during extraction, run `chmod +x liteagent` first.
+
+Both open the chat at **http://127.0.0.1:8787**. Keep the console/application running for chats and scheduled work. You still need to configure a model; Chrome is needed only for browser automation.
 
 ## Interface
 
