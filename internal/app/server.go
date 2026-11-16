@@ -107,6 +107,11 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/browser/open", a.openBrowser)
 	mux.HandleFunc("POST /api/browser/close", a.closeBrowser)
 	mux.HandleFunc("PUT /api/skills", a.saveSkill)
+	mux.HandleFunc("POST /api/skills/import", a.importSkill)
+	mux.HandleFunc("GET /api/skills/{id}/file", a.skillFileAPI)
+	mux.HandleFunc("PUT /api/skills/{id}/file", a.skillFileAPI)
+	mux.HandleFunc("GET /api/skills/{id}/export", a.exportSkill)
+	mux.HandleFunc("POST /api/skills/{id}/toggle", a.toggleSkill)
 	mux.HandleFunc("DELETE /api/skills/{id}", a.deleteSkill)
 	mux.HandleFunc("POST /api/skills/draft", a.draftSkill)
 	files := http.FileServer(http.FS(webassets.Assets))
@@ -390,7 +395,12 @@ func (a *App) startRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, errors.New("enter a message between 1 and 12000 characters"))
 		return
 	}
-	if strings.HasPrefix(strings.TrimSpace(input.Task), "/") || a.wizards[input.ChatID] != nil {
+	originalCommand, _ := splitCommand(input.Task)
+	if err := resolveSkillCommand(&input, a.store.Snapshot().Skills); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	if originalCommand != "/skill" && (strings.HasPrefix(strings.TrimSpace(input.Task), "/") || a.wizards[input.ChatID] != nil) {
 		run, err := a.command(r.Context(), input)
 		if err != nil {
 			fail(w, 400, err)
@@ -469,6 +479,10 @@ func (a *App) beginRun(input ChatRequest, origin string, claim func(*State) erro
 		chatID = newID()
 	}
 	run := Run{ID: newID(), RequestID: a.requestID, RequestHash: a.requestHash, ScheduleID: input.ScheduleID, ScheduledFor: input.ScheduledFor, Reasoning: st.Config.reasoningMode(), ChatID: chatID, Origin: origin, Task: input.Task, Status: "running", CreatedAt: now(), Model: st.Config.Model, SkillIDs: ids, Events: []Event{}}
+	run.skillCatalog = st.Skills
+	if run.skillCatalog == nil {
+		run.skillCatalog = []Skill{}
+	}
 	run.Provider = st.Config.Provider
 	if st.Config.Provider == "ollama" {
 		run.ContextLimit = st.Config.contextTokens()
@@ -703,42 +717,24 @@ func (a *App) closeBrowser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) saveSkill(w http.ResponseWriter, r *http.Request) {
-	var s Skill
-	if err := decode(w, r, &s); err != nil {
+	var input struct {
+		ID, Name, Description, Instructions string
+		ExpectedRevision                    string `json:"expected_revision"`
+	}
+	if err := decode(w, r, &input); err != nil {
 		fail(w, 400, err)
 		return
 	}
-	s.Name = strings.TrimSpace(s.Name)
-	s.Description = strings.TrimSpace(s.Description)
-	s.Instructions = strings.TrimSpace(s.Instructions)
-	if s.Name == "" || len(s.Name) > 120 || len(s.Description) > 600 || len(s.Instructions) < 10 || len(s.Instructions) > 12000 {
-		fail(w, 400, errors.New("a skill needs a name and instructions (10 to 12000 characters)"))
-		return
-	}
-	s.UpdatedAt = now()
-	if s.ID == "" {
-		s.ID = newID()
-	}
-	err := a.store.Update(func(st *State) error {
-		for i := range st.Skills {
-			if st.Skills[i].ID == s.ID {
-				st.Skills[i] = s
-				return nil
-			}
-		}
-		if len(st.Skills) >= 100 {
-			return errors.New("the limit of 100 skills has been reached")
-		}
-		st.Skills = append(st.Skills, s)
-		return nil
-	})
+	saved, err := a.saveSimpleSkill(r.Context(), Skill{ID: input.ID, Name: input.Name, Description: input.Description, Instructions: input.Instructions}, input.ExpectedRevision)
 	if err != nil {
 		fail(w, 400, err)
 		return
 	}
-	sendJSON(w, 200, s)
+	sendJSON(w, 200, saved)
 }
 func (a *App) deleteSkill(w http.ResponseWriter, r *http.Request) {
+	a.store.skillsMu.Lock()
+	defer a.store.skillsMu.Unlock()
 	err := a.store.Update(func(st *State) error {
 		for _, schedule := range st.Schedules {
 			if schedule.SkillID == r.PathValue("id") {

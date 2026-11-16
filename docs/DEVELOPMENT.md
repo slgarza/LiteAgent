@@ -10,6 +10,7 @@ go test -race ./...
 go vet ./...
 node --check web/app.js
 node --check web/manage.js
+node --check web/skills.js
 node --check web/notifications.js
 node --check web/setup.js
 ```
@@ -110,3 +111,5 @@ go build -o LiteAgent-console.exe ./cmd/liteagent
 ```
 
 `scripts/build.sh` cross-compiles both Windows variants. Check the resulting PE subsystem (GUI for the desktop executable, console for the terminal executable), then validate launch, relaunch, startup errors, ChromeDriver and Quit on real Windows before claiming platform support. Wine checks do not replace that validation.
+
+`skill_packages_test.go` covers migration, revision conflicts, rollback, startup cleanup, ZIP/YAML/path limits, lossless resource export, paginated Unicode reads, template-copy guards, disabled schedules and GitHub imports through a synthetic transport. `TestWorkspaceUI` imports synthetic browser Files, edits a resource, exports the package, checks mobile layout and selects `/skill` without running live inference.

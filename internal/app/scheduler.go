@@ -245,8 +245,10 @@ func appToolDefinitions() []ToolDef {
 	return []ToolDef{
 		tool("browser_start", "Open the agent browser so the user can sign in manually.", nil),
 		tool("browser_close", "Close the agent browser. The profile and sign-in sessions are kept.", nil),
-		tool("skills_list", "List all installed skills. Use when asked what skills are available or installed.", nil),
-		tool("skills_save", "Create or update a reusable plain-text skill when the user asks to remember, create or edit one. Include verification steps. No executable code or passwords.", map[string]any{"id": stringProp("Existing skill ID to update; omit to create"), "name": stringProp("Skill name"), "description": stringProp("When to use it"), "instructions": stringProp("Reusable steps and verification")}, "name", "description", "instructions"),
+		tool("skills_list", "List enabled skill summaries only when asked. Does not load instructions.", map[string]any{"offset": map[string]any{"type": "number", "minimum": 0}}),
+		tool("skills_files", "List files in a requested skill package without loading their contents.", map[string]any{"id": stringProp("Skill ID"), "offset": map[string]any{"type": "number", "minimum": 0}}, "id"),
+		tool("skills_copy_resource", "Copy a skill template or other resource to a working file inside home. Existing files require their prior hash. Does not execute scripts.", map[string]any{"id": stringProp("Skill ID"), "path": stringProp("Package-relative resource"), "destination": stringProp("Working file path inside home"), "expected_sha256": stringProp("Hash of existing destination, if replacing")}, "id", "path", "destination"),
+		tool("skills_save", "Create or update a reusable plain-text skill when the user asks to remember, create or edit one. Include verification steps. No executable code or passwords.", map[string]any{"id": stringProp("Existing skill ID to update; omit to create"), "name": stringProp("Skill name"), "description": stringProp("When to use it"), "instructions": stringProp("Reusable steps and verification"), "expected_revision": stringProp("Required when updating: revision from the latest skill read")}, "name", "description", "instructions"),
 		tool("skills_install", "Install a plain-text Markdown skill from a direct HTTP/HTTPS URL explicitly supplied by the user. It stores instructions only, never executes downloaded code.", map[string]any{"name": stringProp("Skill name"), "description": stringProp("When to use it"), "url": stringProp("Direct URL of a text skill file")}, "name", "description", "url"),
 		tool("skills_remove", "Delete a saved skill only when the user requests its removal. Schedules using it must be removed first.", map[string]any{"id": stringProp("Skill ID")}, "id"),
 		tool("schedules_list", "List saved reminders and scheduled skill executions, including their status.", nil),
@@ -268,12 +270,9 @@ func (a *App) applicationTool(ctx context.Context, run Run, name string, args ma
 	case "browser_close":
 		a.browser.Close()
 		return "Browser closed. Sessions remain in its profile.", true, nil
-	case "skills_list":
-		skills := []map[string]string{}
-		for _, s := range a.store.Snapshot().Skills {
-			skills = append(skills, map[string]string{"id": s.ID, "name": s.Name, "description": s.Description})
-		}
-		return encode(skills), true, nil
+	case "skills_list", "skills_search", "skills_read", "skills_files", "skills_copy_resource":
+		text, err := a.skillTools(ctx, run, name, args)
+		return text, true, err
 	case "skills_save", "skills_install":
 		instructions := str("instructions")
 		if name == "skills_install" {
@@ -281,44 +280,24 @@ func (a *App) applicationTool(ctx context.Context, run Run, name string, args ma
 			if !strings.HasPrefix(address, "https://") && !strings.HasPrefix(address, "http://") {
 				return "", true, errors.New("use a direct HTTP/HTTPS text URL")
 			}
-			data, err := download(ctx, address, 64<<10)
+			data, err := download(ctx, address, maxSkillDocumentBytes)
 			if err != nil {
 				return "", true, err
 			}
+			if !skillText(data) || strings.Contains(strings.ToLower(string(data)), "<html") {
+				return "", true, errors.New("use a direct UTF-8 Markdown URL")
+			}
+			if strings.HasPrefix(strings.TrimPrefix(string(data), "\ufeff"), "---\n") || strings.HasPrefix(string(data), "---\r\n") {
+				saved, err := a.store.installSkillPackage(ctx, "", "", map[string][]byte{"SKILL.md": data}, SkillSource{Kind: "markdown"}, "")
+				return encode(saved), true, err
+			}
 			instructions = string(data)
-			if strings.Contains(strings.ToLower(instructions), "<html") || strings.Contains(instructions, "\x00") {
-				return "", true, errors.New("the URL must return a plain-text skill, not an HTML page or binary")
-			}
 		}
-		skill := Skill{ID: str("id"), Name: strings.TrimSpace(str("name")), Description: strings.TrimSpace(str("description")), Instructions: strings.TrimSpace(instructions), UpdatedAt: now()}
-		if skill.Name == "" || len(skill.Name) > 120 || len(skill.Description) > 600 || len(skill.Instructions) < 10 || len(skill.Instructions) > 12000 {
-			return "", true, errors.New("skill needs a name and 10 to 12000 characters of instructions")
-		}
-		fresh := skill.ID == ""
-		if fresh {
-			skill.ID = newID()
-		}
-		err := a.store.Update(func(st *State) error {
-			for i, s := range st.Skills {
-				if s.ID == skill.ID {
-					st.Skills[i] = skill
-					return nil
-				}
-				if fresh && strings.EqualFold(s.Name, skill.Name) {
-					return errors.New("a skill with this name exists; read it and provide its ID to update")
-				}
-			}
-			if !fresh {
-				return errors.New("skill not found")
-			}
-			if len(st.Skills) >= 100 {
-				return errors.New("skill library is full")
-			}
-			st.Skills = append(st.Skills, skill)
-			return nil
-		})
-		return encode(skill), true, err
+		saved, err := a.saveSimpleSkill(ctx, Skill{ID: str("id"), Name: str("name"), Description: str("description"), Instructions: instructions}, str("expected_revision"))
+		return encode(saved), true, err
 	case "skills_remove":
+		a.store.skillsMu.Lock()
+		defer a.store.skillsMu.Unlock()
 		err := a.store.Update(func(st *State) error {
 			for _, s := range st.Schedules {
 				if s.SkillID == str("id") {

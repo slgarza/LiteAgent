@@ -15,6 +15,7 @@ A local assistant with a web chat, browser automation, text and Office file tool
 - Windows production executable without a console; Quit from the interface.
 - Chrome automation and local text-file inspection, creation and editing.
 - Reading and editing existing Excel, Word and PowerPoint documents, without an Office runtime.
+- Agent Skills packages imported from ZIP, folders or public GitHub, with editable resources and OpenClaw/Hermes metadata preservation.
 - Saved procedures used on request, cron jobs, reminders and notification sounds.
 - Detailed session status with provider-reported tokens, cache, context, execution and queue information.
 - Settings for connections, timeouts, notifications, schedules, skills and MCP servers.

@@ -46,7 +46,7 @@ On Linux, substitute `./liteagent` for `LiteAgent.exe` in the examples. Use `ser
 - **Models & API keys:** named provider profiles; add, edit, fetch and select available models, test discovery, activate and remove connections. API keys are never returned to the browser. An empty key preserves the existing credential only for the same provider and endpoint; a checkbox explicitly removes it. Pasting a new key clears that checkbox. Changing endpoints never carries a saved key to the new address. Editing the active profile updates the current connection.
 - **Notifications:** enable desktop alerts, mute or enable the chime, choose whether to be notified about replies while away, and test delivery. Preferences are saved in this browser.
 - **Crons & reminders:** all schedules from every chat, including those created by the agent. Inspect their expression, time zone, next execution, last result and errors; filter, pause, resume, run now, open the conversation or delete a schedule. The sidebar Schedules button opens this section too.
-- **Skills:** create, inspect, edit and remove saved procedures. A skill referenced by a schedule cannot be removed until the schedule is removed.
+- **Skills:** import, inspect, edit, update, export, disable and use procedure packages. A skill referenced by a schedule cannot be removed until the schedule is removed.
 - **MCP servers:** save Streamable HTTP endpoints with optional bearer tokens; discover tools, enable/disable, edit or remove servers.
 
 While a reply is running, **Enter** or the send button adds a follow-up to the **message queue** above the composer. Stop remains available. Ready messages run one at a time, in submission order, after the current reply completes successfully. Each queued message becomes a separate reply with that conversation’s history and the model configuration saved when its execution starts. Queues belong to their conversations; work in another chat does not expose its pending message text here.
@@ -107,7 +107,8 @@ Commands work without a model, except `/models`, which contacts the configured p
 | `/status` | Runtime, connection, session usage, context/cache, execution, queue and limits |
 | `/models` | List models available from the provider |
 | `/model MODEL_ID` | Switch the configured model |
-| `/skills` | List installed skills |
+| `/skills` | Open the library / list installed skills |
+| `/skill NAME [TASK]` | Explicitly use a skill by its slug or ID, with optional task details |
 | `/schedules` | List reminders and scheduled skills |
 | `/notifications` | Open sound and desktop notification settings in the web chat |
 | `/stop` | Cancel the current reply and browser operation |
@@ -188,9 +189,31 @@ Examples after connecting a model:
 - “Run superticket every day at 2 PM.”
 - “Pause the superticket schedule.”
 
-The model receives tools for these operations. Successful tool calls create real saved skills and schedules; the action log is expandable inside the assistant's message. Skills contain reusable text instructions, not executable plugins or arbitrary shell commands. Existing skill files can be imported from direct text URLs; a plugin requiring Python, shell scripts or other runtimes will not work unchanged.
+The model receives tools for these operations. Successful tool calls create real saved skills and schedules; the action log is expandable inside the assistant's message. Direct Markdown URLs remain available through chat for importing instructions without companion files.
 
-Skills persist across restarts. The agent can list, search, read, create, update and remove them. Skills preload only when explicitly selected for a reply or scheduled execution. Ordinary chat no longer injects procedures by matching words in their names/descriptions. Ask “Use the monthly report skill” or “Find the reporting skill” when needed; the model is instructed to search/read only in response to such requests. A prior reply’s selected skills do not carry into the next request automatically, and a supplied procedure does not need another read. To adjust a schedule's time, ask to replace it; pause, resume and delete are also supported.
+## Skill packages
+
+Open **Settings → Skills → Import** and choose a ZIP, folder or public GitHub repository. A package contains `SKILL.md` with YAML frontmatter (`name` and `description`) followed by instructions. Companion files can live in `references/`, `assets/`, `scripts/`, `templates/` or other relative folders:
+
+```text
+report-check/
+  SKILL.md
+  references/checklist.md
+  assets/template.xlsx
+  scripts/check.py
+```
+
+This is compatible with the shared [Agent Skills format](https://agentskills.io/specification) used by [OpenClaw](https://docs.openclaw.ai/tools/skills) and [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills). It is format compatibility, not a guarantee that another agent's tools or runtime are available. Original frontmatter, unknown metadata, licenses and resource bytes survive import/export. **Format valid** means the document was parsed; **Needs adaptation** identifies scripts, declared tools, dependencies or platform requirements that need review. Dependencies are reported from metadata, not installed or tested automatically. `AGENTS.md` and `SOUL.md` inside a package are ordinary resources; importing them does not change LiteAgent's global behavior.
+
+Use **Files** to inspect resources without running the agent. Text previews have pages; **Edit file** loads the complete text for files up to 64 KiB and saves with revision/hash checks. **Edit** changes the procedure's name, description and body while retaining unknown frontmatter and companion files. For larger procedure bodies, use **Files → SKILL.md**. **Update** replaces the whole package from a selected source, retaining its ID and schedule links. **Export ZIP** includes the current `SKILL.md` and all companion files. [Desktop library](screenshots/skills-library-desktop.png), [mobile library](screenshots/skills-library-mobile.png) and [resource editor](screenshots/skills-resource-desktop.png) show synthetic examples.
+
+For GitHub, provide a public repository URL, optionally a branch/tag/commit and a skill folder. Repository, `/tree/ref/folder` and `/blob/ref/folder/SKILL.md` URLs are accepted. When a branch contains slashes, use the repository URL and enter the branch and folder separately. Imports resolve to a commit SHA and download that revision; updates happen only when you choose **Update**. Private repositories and credential-bearing URLs are unsupported. Export or select the local folder instead. If an archive/repository contains several skills, choose one using **Skill folder inside the source** (`.` selects the source root). ZIP wrapper directories are removed automatically when there is only one skill.
+
+Packages allow 128 files, 16 MiB total, 8 MiB per resource and 64 KiB for `SKILL.md`. ZIP uploads allow 32 MiB compressed and 64 MiB expanded across the archive before selecting a package. Links, traversal paths, duplicate/case-colliding paths, Windows reserved names and YAML aliases are rejected. Imported scripts can be inspected and exported, but LiteAgent cannot execute them, install dependencies or dispatch OpenClaw commands. A skill requiring those capabilities needs adaptation. Binary templates can be copied into a working folder with `skills_copy_resource` and then opened by the existing file tools; replacing an existing working file requires its previous SHA-256.
+
+Choose **Use** to prepare `/skill ID` in the composer, add your task details and send. `/skill report-check Review this month's report` also works with the package slug. Skills preload only through explicit selection or scheduled execution. Ordinary chat does not inject procedures by matching words. Ask “Use the monthly report skill” or “Find the reporting skill” when needed; the model is instructed to discover/read only on request. List/search tools return summaries, and companion contents are read separately as needed. A prior reply's skill selection does not carry into the next request automatically. Updates apply to subsequent replies; an active reply keeps its starting package revisions.
+
+Existing saved procedures migrate automatically into packages, keeping their IDs, display names and schedule references. **Disable** excludes a skill from new selections and pauses its schedules; re-enabling it does not resume schedules automatically. Remove linked schedules before removing a skill. Old revisions and removed packages remain on disk until the next startup so active work can finish reading them; startup removes those obsolete files. Back up the whole data directory, including `skills/`, rather than `state.json` alone.
 
 ## Reminders and scheduled skills
 
@@ -259,7 +282,8 @@ The local API still requires `X-LiteAgent: 1` for writes. `POST /api/connections
 Default: `%AppData%\LiteAgent` on Windows, or the user's configuration directory followed by `/LiteAgent` on Linux. Use `--data PATH` for portable storage. The server takes an operating-system file lock so two instances cannot run against the same data directory.
 
 ```text
-state.json          Settings, connection profiles, MCP servers, chats, skills and schedules
+state.json          Settings, connection profiles, MCP servers, chats, skill metadata and schedules
+skills/             Private package revisions, instructions and companion resources
 browser-profile/    Agent browser cookies and sessions
 downloads/          Downloaded files
 drivers/            Cached ChromeDriver

@@ -23,3 +23,5 @@ The initial screenshots come from temporary test applications, not the live chat
 ## Optional VS Code bridge
 
 The bridge keeps its local authentication token in VS Code SecretStorage. LiteAgent stores the same token as its connection credential. Requests forward LiteAgent conversation context, instructions and tool results to the selected VS Code model provider. The extension does not read credentials or conversations from other extensions and does not record prompts/responses. Provider data handling and account limits still apply. See [setup and data flow](VSCODE.md).
+
+The private `skills/` directory stores imported instructions, scripts, templates and other resources by package revision. Back it up together with `state.json`; package metadata alone cannot restore resource files. Older revisions and removed packages are retained until startup to support active tasks, then pruned. Never add runtime skill packages to the source repository.

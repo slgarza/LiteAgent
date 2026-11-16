@@ -71,11 +71,18 @@ func (c Config) Validate() error {
 }
 
 type Skill struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Instructions string `json:"instructions"`
-	UpdatedAt    string `json:"updated_at"`
+	Slug          string             `json:"slug,omitempty"`
+	Version       string             `json:"version,omitempty"`
+	Revision      string             `json:"revision,omitempty"`
+	Disabled      bool               `json:"disabled,omitempty"`
+	Source        SkillSource        `json:"source,omitempty"`
+	Files         []SkillFile        `json:"files,omitempty"`
+	Compatibility SkillCompatibility `json:"compatibility,omitempty"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Description   string             `json:"description"`
+	Instructions  string             `json:"instructions"`
+	UpdatedAt     string             `json:"updated_at"`
 }
 
 type Event struct {
@@ -86,6 +93,7 @@ type Event struct {
 }
 
 type Run struct {
+	skillCatalog []Skill
 	Provider     string      `json:"provider,omitempty"`
 	ContextLimit int         `json:"context_limit,omitempty"`
 	Metrics      *RunMetrics `json:"metrics,omitempty"`
@@ -128,9 +136,10 @@ type State struct {
 }
 
 type Store struct {
-	mu    sync.Mutex
-	path  string
-	state State
+	skillsMu sync.Mutex
+	mu       sync.Mutex
+	path     string
+	state    State
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
@@ -185,6 +194,12 @@ func openStore(dir string) (*Store, error) {
 	}
 	pauseMessages(&s.state, "LiteAgent restarted. Resume this message when ready.")
 	if err = s.saveLocked(); err != nil {
+		return nil, err
+	}
+	if err = s.migrateSkills(); err != nil {
+		return nil, err
+	}
+	if err = s.pruneSkillPackages(); err != nil {
 		return nil, err
 	}
 	return s, nil

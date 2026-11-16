@@ -11,6 +11,7 @@
   <script defer src="./purify.js"></script>
   <script defer src="./app.js"></script>
   <script defer src="./manage.js"></script>
+  <script defer src="./skills.js"></script>
   <script defer src="./notifications.js"></script>
   <script defer src="./setup.js"></script>
 </head>
@@ -180,15 +181,36 @@
         <p id="connections-feedback" class="feedback" role="status"></p>
       </section>
       <section id="panel-skills" class="settings-panel" aria-label="Skills library" hidden>
-        <div class="section-heading"><div><h3>Skills</h3><p class="muted">Reusable procedures for conversations and scheduled jobs.</p></div><button id="new-skill" type="button">Add</button></div>
+        <div class="section-heading"><div><h3>Skills</h3><p class="muted">Procedures and resources. Use a skill explicitly in chat or a schedule.</p></div><div class="card-actions"><button id="import-skill" type="button">Import</button><button id="new-skill" type="button">Add</button></div></div>
         <div id="skills-list" class="management-list"></div>
         <form id="skill-form" class="editor-form" hidden>
           <h4 id="skill-editor-title">New skill</h4>
           <label>Name<input id="skill-name" required maxlength="120"></label>
-          <label>When to use it<input id="skill-description" maxlength="600"></label>
-          <label>Instructions<textarea id="skill-instructions" required minlength="10" maxlength="12000" rows="6" placeholder="Objective, steps and how to verify success"></textarea></label>
+          <label>When to use it<input id="skill-description" maxlength="1024"></label>
+          <label>Instructions<textarea id="skill-instructions" required minlength="10" maxlength="32768" rows="6" placeholder="Objective, steps and how to verify success"></textarea></label>
           <div class="dialog-actions"><button type="button" id="cancel-skill">Cancel</button><button type="submit" id="save-skill" class="primary">Save skill</button></div>
         </form>
+        <form id="skill-import-form" class="editor-form" hidden>
+          <h4 id="skill-import-title">Import skill</h4>
+          <label>Source<select id="skill-import-kind"><option value="zip">ZIP package</option><option value="folder">Folder</option><option value="github">Public GitHub repository</option></select></label>
+          <label id="skill-zip-field">ZIP file<input id="skill-zip" type="file" accept=".zip,application/zip"></label>
+          <label id="skill-folder-field" hidden>Skill folder<input id="skill-folder" type="file" webkitdirectory multiple></label>
+          <div id="skill-github-fields" hidden>
+            <label>Repository URL<input id="skill-github-url" type="url" placeholder="https://github.com/owner/repository"></label>
+            <label>Branch, tag or commit (optional)<input id="skill-github-ref" maxlength="200" placeholder="Default branch"></label>
+          </div>
+          <label>Skill folder inside the source (optional)<input id="skill-import-path" placeholder="skills/reporting"></label>
+          <p class="muted">One SKILL.md package, up to 128 files and 16 MiB total. Resources and metadata are preserved. Scripts are stored but cannot run.</p>
+          <div class="dialog-actions"><button id="cancel-skill-import" type="button">Cancel</button><button id="submit-skill-import" class="primary" type="submit">Import</button></div>
+        </form>
+        <section id="skill-inspector" class="editor-form" aria-label="Skill files" hidden>
+          <div class="section-heading"><h4 id="skill-inspector-title">Skill files</h4><button id="close-skill-inspector" type="button">Close</button></div>
+          <label>Resource<select id="skill-resource-path"></select></label>
+          <p id="skill-resource-info" class="muted"></p>
+          <textarea id="skill-resource-content" rows="12" readonly aria-label="Resource contents" spellcheck="false"></textarea>
+          <div class="card-actions"><button id="skill-resource-prev" type="button">Previous page</button><button id="skill-resource-next" type="button">Next page</button><a id="skill-resource-download" download>Download file</a><button id="skill-resource-edit" type="button">Edit file</button><button id="skill-resource-save" type="button" class="primary" hidden>Save file</button><button id="skill-resource-cancel" type="button" hidden>Discard edits</button></div>
+          <p id="skill-resource-feedback" class="feedback" role="status"></p>
+        </section>
         <p id="skills-feedback" class="feedback" role="status"></p>
       </section>
       <section id="panel-mcp" class="settings-panel" aria-label="MCP servers" hidden>

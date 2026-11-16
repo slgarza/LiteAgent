@@ -329,6 +329,8 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	script("delete document.hidden;[...document.querySelectorAll('.notification-toast')].forEach(n=>n.dismissNotification())")
 	screenshot := func(name string) {
 		if dir := os.Getenv("LITEAGENT_SCREENSHOT_DIR"); dir != "" {
+			script("window.screenshotReady=false;requestAnimationFrame(()=>requestAnimationFrame(()=>window.screenshotReady=true))")
+			await("window.screenshotReady")
 			raw, err := browser.command(ctx, "GET", "/session/"+browser.session+"/screenshot", nil)
 			if err != nil {
 				t.Fatal(err)
@@ -349,6 +351,44 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	}
 	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
 	screenshot("notifications-desktop.png")
+	// Import only synthetic browser Files; no real user folders or accounts.
+	fixtureJSON, _ := json.Marshal(packageFixture())
+	script("document.querySelector('[data-settings-tab=skills]').click();document.getElementById('import-skill').click();document.getElementById('skill-import-kind').value='folder';skillImportFields()")
+	script(`const files = ` + string(fixtureJSON) + `;const transfer = new DataTransfer();for(const [path,encoded] of Object.entries(files)){const file=new File([Uint8Array.from(atob(encoded),c=>c.charCodeAt(0))],path.split('/').at(-1));Object.defineProperty(file,'webkitRelativePath',{value:'report-check/'+path});transfer.items.add(file)}document.getElementById('skill-folder').files=transfer.files;document.getElementById('skill-import-form').requestSubmit()`)
+	await("state.skills.some(s=>s.name==='report-check') && document.getElementById('skill-import-form').hidden")
+	script("window.packageCard=()=>[...document.querySelectorAll('#skills-list .management-card')].find(c=>c.querySelector('strong').textContent==='report-check');packageCard().querySelector('details').open=true")
+	screenshot("skills-library-desktop.png")
+	script("[...packageCard().querySelectorAll('button')].find(b=>b.textContent==='Files').click()")
+	await("document.getElementById('skill-resource-content').value.includes('metadata:')")
+	script("document.getElementById('skill-resource-path').value='references/checklist.md';document.getElementById('skill-resource-path').dispatchEvent(new Event('change'))")
+	await("document.getElementById('skill-resource-content').value.includes('Confirm totals')")
+	script("document.getElementById('skill-resource-edit').click()")
+	await("!document.getElementById('skill-resource-content').readOnly")
+	script("document.getElementById('skill-resource-content').value='Confirm totals, date and source.\\nRecord any discrepancy and verify it with the user.';document.getElementById('skill-resource-save').click()")
+	await("document.getElementById('skill-resource-feedback').textContent==='File saved.' && document.getElementById('skill-resource-content').readOnly")
+	screenshot("skills-resource-desktop.png")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 390, "height": 844})
+	script("document.getElementById('skill-inspector').scrollIntoView({block:'nearest'})")
+	if string(script("return document.getElementById('settings-dialog').scrollWidth<=document.getElementById('settings-dialog').clientWidth && document.documentElement.scrollWidth<=window.innerWidth")) != "true" {
+		t.Fatal("skill inspector mobile overflow")
+	}
+	screenshot("skills-resource-mobile.png")
+	script("document.getElementById('close-skill-inspector').click();packageCard().scrollIntoView({block:'start'})")
+	screenshot("skills-library-mobile.png")
+	script("window.packageDownloadOK=false;fetch(packageCard().querySelector('a[download]').href).then(r=>r.arrayBuffer()).then(b=>{const bytes=new Uint8Array(b);window.packageDownloadOK=bytes[0]===80&&bytes[1]===75})")
+	await("window.packageDownloadOK")
+	script("[...packageCard().querySelectorAll('button')].find(b=>b.textContent==='Disable').click()")
+	await("state.skills.find(s=>s.name==='report-check').disabled")
+	if string(script("return [...packageCard().querySelectorAll('button')].find(b=>b.textContent==='Use').disabled")) != "true" {
+		t.Fatal("disabled skill can be used in UI")
+	}
+	script("[...packageCard().querySelectorAll('button')].find(b=>b.textContent==='Enable').click()")
+	await("!state.skills.find(s=>s.name==='report-check').disabled")
+	script("document.getElementById('message').value='Check this month';[...packageCard().querySelectorAll('button')].find(b=>b.textContent==='Use').click()")
+	await("!document.getElementById('settings-dialog').open && document.getElementById('message').value==='/skill '+state.skills.find(s=>s.name==='report-check').id+' Check this month'")
+	script("document.getElementById('message').value='';renderCommands();updateControls();document.getElementById('show-settings').click();document.querySelector('[data-settings-tab=notifications]').click()")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
+
 	script("document.querySelector('[data-settings-tab=generation]').click();document.getElementById('setting-max_steps').value='30';document.getElementById('setting-max_tool_failures').value='10';document.getElementById('settings-form').requestSubmit()")
 	await("!document.getElementById('settings-dialog').open")
 	script("document.getElementById('show-settings').click();document.querySelector('[data-settings-tab=generation]').click()")
@@ -635,5 +675,5 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	default:
 		t.Fatal("Quit did not reach the server")
 	}
-	t.Log("Real Chrome: composer, settings, notifications, schedules, chat deletion, missing/empty/installed Ollama models, automatic discovery and Quit")
+	t.Log("Real Chrome: composer, skill packages/resources, settings, notifications, schedules, chat deletion, missing/empty/installed Ollama models, automatic discovery and Quit")
 }

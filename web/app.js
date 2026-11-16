@@ -555,7 +555,7 @@ const commands = [
   ['/config', 'Inspect and change settings'], ['/context', 'Inspect conversation context'],
   ['/rename', 'Rename this chat'], ['/retry', 'Repeat the latest request'], ['/stop', 'Stop the current run'],
   ['/cron', 'Create, preview and manage jobs'], ['/crons', 'List scheduled jobs'],
-  ['/skills', 'Installed procedures'], ['/models', 'List models'], ['/model', 'Switch model'],
+  ['/skills', 'Skill library'], ['/skill', 'Use a skill by name or ID'], ['/models', 'List models'], ['/model', 'Switch model'],
   ['/chats', 'Saved conversations'], ['/resume', 'Resume by ID'], ['/onboard', 'Connect a provider'],
   ['/cancel', 'Cancel setup'], ['/notifications', 'Sounds and desktop alerts'],
 ];
@@ -687,7 +687,7 @@ function prepareSchedules() {
   if (!state) return;
   if (!$('schedule-timezone').value) $('schedule-timezone').value = state.config.timezone;
   const selected = $('schedule-skill').value;
-  $('schedule-skill').replaceChildren(...state.skills.map(skill => { const option = el('option', skill.name); option.value = skill.id; return option; }));
+  $('schedule-skill').replaceChildren(...state.skills.filter(skill => !skill.disabled).map(skill => { const option = el('option', skill.name); option.value = skill.id; return option; }));
   if (selected) $('schedule-skill').value = selected;
   scheduleSignature = ''; scheduleFields(); renderSchedules();
 }

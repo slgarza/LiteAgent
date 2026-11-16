@@ -114,16 +114,7 @@ function renderManagement() {
     }, active || !!state.active);
     $('connections-list').append(card);
   }
-  if (!state.skills.length) $('skills-list').append(el('p', 'No skills yet. Add a procedure with steps and verification.', 'empty-state'));
-  for (const skill of state.skills) {
-    const {card, actions} = managementCard(skill.name, skill.description || 'Saved procedure');
-    cardAction(actions, 'Edit', () => editSkill(skill));
-    cardAction(actions, 'Remove', button => {
-      if (!confirm('Remove skill “' + skill.name + '”?')) return;
-      managedAction(button, 'skills-feedback', async () => { await api('skills/' + skill.id, 'DELETE'); feedback('skills-feedback', 'Skill removed.'); });
-    });
-    $('skills-list').append(card);
-  }
+  renderSkills();
   if (!state.mcp_servers?.length) $('mcp-list').append(el('p', 'No servers connected. Add a Streamable HTTP endpoint to make its tools available.', 'empty-state'));
   for (const server of state.mcp_servers || []) {
     const {card, actions} = managementCard(server.name, server.url + (server.token_set ? ' · Token saved' : ''), server.enabled ? 'Enabled' : 'Disabled');
@@ -240,7 +231,7 @@ async function loadConnectionModels() {
   }
 }
 function editSkill(skill = {}) {
-  $('skill-form').hidden = false; $('skill-form').dataset.id = skill.id || '';
+  $('skill-form').hidden = false; $('skill-form').dataset.id = skill.id || ''; $('skill-form').dataset.revision = skill.revision || '';
   $('skill-editor-title').textContent = skill.id ? 'Edit skill' : 'New skill';
   $('skill-name').value = skill.name || ''; $('skill-description').value = skill.description || ''; $('skill-instructions').value = skill.instructions || '';
   $('skill-name').focus(); $('skill-form').scrollIntoView({block: 'nearest'});
@@ -321,7 +312,7 @@ function initManagement() {
   $('skill-form').addEventListener('submit', async event => {
     event.preventDefault();
     await managedAction($('save-skill'), 'skills-feedback', async () => {
-      await api('skills', 'PUT', {id: $('skill-form').dataset.id, name: $('skill-name').value, description: $('skill-description').value, instructions: $('skill-instructions').value});
+      await api('skills', 'PUT', {id: $('skill-form').dataset.id, expected_revision: $('skill-form').dataset.revision, name: $('skill-name').value, description: $('skill-description').value, instructions: $('skill-instructions').value});
       $('skill-form').hidden = true; feedback('skills-feedback', 'Skill saved.');
     });
   });

@@ -93,7 +93,7 @@ func (a *App) createSchedule(s Schedule) (Schedule, error) {
 		if s.Kind == "skill" {
 			found = false
 			for _, skill := range st.Skills {
-				if skill.ID == s.SkillID {
+				if skill.ID == s.SkillID && !skill.Disabled {
 					found = true
 					break
 				}
@@ -129,6 +129,17 @@ func (a *App) updateSchedule(id, action string) error {
 			case "pause":
 				s.Enabled = false
 			case "resume":
+				if s.Kind == "skill" {
+					enabled := false
+					for _, skill := range st.Skills {
+						if skill.ID == s.SkillID && !skill.Disabled {
+							enabled = true
+						}
+					}
+					if !enabled {
+						return errors.New("enable the skill before resuming its schedule")
+					}
+				}
 				if s.LastStatus == "running" {
 					return errors.New("wait for the scheduled execution to finish")
 				}

@@ -69,6 +69,7 @@ const commandHelp = `You can chat normally and ask me to use the browser, create
 - /model MODEL — switch models
 - /status — runtime, session, usage, context, execution and queue
 - /skills — list installed skills
+- /skill NAME [TASK] — explicitly use a saved skill
 - /schedules — list reminders and scheduled skills
 - /stop — stop the current reply
 - /new — start a new conversation
@@ -280,11 +281,15 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 	case "/skills":
 		st := a.store.Snapshot()
 		if len(st.Skills) == 0 {
-			reply = "No skills installed yet. Tell me a procedure to remember, or give me a direct Markdown skill URL to install."
+			reply = "No skills installed yet. Import a package in Settings → Skills, tell me a procedure to remember, or give me a direct Markdown URL."
 		} else {
 			lines := []string{}
 			for _, s := range st.Skills {
-				lines = append(lines, "- **"+s.Name+"**: "+s.Description+" (ID: `"+s.ID+"`)")
+				label := "enabled"
+				if s.Disabled {
+					label = "disabled"
+				}
+				lines = append(lines, "- **"+s.Name+"**: "+s.Description+" ("+label+"; ID: `"+s.ID+"`)")
 			}
 			reply = strings.Join(lines, "\n")
 		}

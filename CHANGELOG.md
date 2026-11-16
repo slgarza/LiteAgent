@@ -6,6 +6,10 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 
 ### Added
 
+- Agent Skills packages with YAML `SKILL.md`, preserved OpenClaw/Hermes metadata, companion resources and explicit compatibility notes. Import one package from ZIP, a selected folder or a public GitHub repository; export it as a ZIP.
+- Skills library with file inspection, paginated previews, guarded text editing, package updates, disable/enable and **Use**. `/skill NAME [TASK]` selects a package explicitly; resources load on request, and binary templates can be copied to working files. Scripts and dependency installers remain unsupported.
+- Automatic migration of saved procedures while preserving IDs and schedule links; immutable package revisions keep active work consistent during updates. Disabling a skill pauses its schedules.
+
 - Detailed `/status` shared by the web panel and terminal: runtime/build, local/UTC time, uptime, connection/authentication type, session usage, context/cache, execution, queue and limits. No inference calls or saved credentials are used in the report.
 - Persisted per-run model request counts, elapsed time and provider-reported token/cache metrics. Missing values and older unmeasured replies are identified explicitly; incomplete responses can retain usage without executing partial calls.
 

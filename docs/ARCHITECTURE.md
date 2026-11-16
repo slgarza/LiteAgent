@@ -33,6 +33,7 @@ flowchart LR
 | `internal/app/office.go`, `office_sheet.go` | Bounded OOXML reading and targeted document/spreadsheet edits |
 | `internal/app/browser.go`, `driver.go` | WebDriver and driver installation |
 | `internal/app/scheduler.go`, `schedules_api.go` | Jobs and durable occurrence claims |
+| `internal/app/skill_packages.go`, `skill_api.go`, `skill_tools.go` | Package parsing, revision storage, import/export and paginated resource tools |
 | `internal/app/store.go` | Serialized state mutations and atomic persistence |
 | `internal/app/commands.go`, `chat_commands.go`, `cli.go` | Commands and terminal client |
 | `internal/app/connections.go`, `settings.go`, `mcp.go` | Connections, generation settings, MCP |
@@ -77,3 +78,11 @@ The UI polls state and ignores stale responses using a revision counter. The com
 See [Filesystem](FILESYSTEM.md) and [Data](DATA.md) for boundaries and limits.
 
 The `vscode` provider uses the same tool-call wire format as OpenAI Chat, with a separate local endpoint and token. Its optional extension owns model discovery and request translation. VS Code model access remains under the provider's consent/quota controls. Tool execution remains in LiteAgent; no VS Code agent session or other chat history is intercepted. See [VS Code bridge](VSCODE.md).
+
+## Skill packages
+
+`Store.skillsMu` serializes package mutations. Imports validate bounded UTF-8 YAML, portable paths and a manifest before writing a private staging directory under `skills/<hash-of-id>/`. Files are published as an immutable content-addressed revision, then `Store.Update` atomically commits the metadata. Persistence failure removes a newly published revision and rolls back state. Edits require the current revision and, for individual resources, the prior file hash. Reads use `os.Root`, reject links and verify the stored content hash. GitHub imports use a pinned commit and never fetch unrelated repository blobs.
+
+Each worker captures the skill catalog at launch, independently of later edits, disable operations or deletion. New calls use those captured revisions; metadata mutations become visible on the next reply. Startup prunes obsolete revisions and removed packages before workers start. Legacy plain-text procedures migrate under the same IDs. Disabling holds `runMu` and `skillsMu`, then pauses linked schedules in the same state transaction. Schedule creation/resume rejects unavailable skills.
+
+Skill discovery returns bounded metadata; selected instructions are bounded and explicitly mark truncation. `skills_files` and `skills_read` page through resources; `skills_copy_resource` uses the existing filesystem lock, cancellation, home root and prior-hash guard to copy binary templates to work files. Scripts and foreign command dispatch are stored but never executed. Global agent profiles are separate from imported `AGENTS.md`/`SOUL.md` resources. `web/skills.js` provides the library without a frontend build step.

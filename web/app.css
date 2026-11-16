@@ -300,3 +300,16 @@ dialog textarea { min-height: 100px; padding-bottom: var(--space-md); }
   .palette-item .palette-enter { display: none; }
 }
 @supports not (backdrop-filter: blur(1px)) { .glass-dialog, .command-menu { background: rgb(25 29 35); } }
+
+.skill-meta { color: var(--color-muted); font-size: .8rem; }
+.skill-compatibility { margin: 8px 0 12px; font-size: .85rem; overflow-wrap: anywhere; }
+.skill-compatibility summary { cursor: pointer; color: var(--color-muted); }
+.skill-compatibility ul { padding-left: 20px; }
+.skill-compatibility li { margin: 6px 0; }
+#skill-inspector textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: .8rem; line-height: 1.6; }
+#skill-resource-info { overflow-wrap: anywhere; }
+#panel-skills .card-actions { flex-wrap: wrap; }
+#skill-import-form input[type=file] { max-width: 100%; min-width: 0; }
+
+#panel-skills .card-actions a { display: inline-flex; align-items: center; min-height: 36px; padding-inline: var(--space-xs); font-size: 12px; color: var(--color-muted); text-decoration: none; border-radius: 6px; }
+#panel-skills .card-actions a:hover { color: var(--color-ink); background: var(--color-paper-2); }
