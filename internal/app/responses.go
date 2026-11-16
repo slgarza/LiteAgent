@@ -28,8 +28,20 @@ func completeResponses(ctx context.Context, c Config, messages []Message, defs [
 		}
 	}
 	body := map[string]any{"model": c.Model, "input": input, "store": false, "stream": false, "include": []string{"reasoning.encrypted_content"}}
+	reasoning := map[string]string{}
 	if c.reasoningMode() != "auto" {
-		body["reasoning"] = map[string]string{"effort": c.reasoningMode()}
+		reasoning["effort"] = c.reasoningMode()
+	}
+	// Do not add a summary parameter to ordinary Responses models. Known
+	// summary-capable families opt in; any
+	// summary returned by other compatible models is still parsed below.
+	model := strings.ToLower(c.Model)
+	gptReasoning := (strings.HasPrefix(model, "gpt-5") || strings.HasPrefix(model, "gpt-6")) && !strings.Contains(model, "-chat")
+	if c.reasoningMode() != "none" && (gptReasoning || model == "o3" || strings.HasPrefix(model, "o3-") || model == "o4-mini" || strings.HasPrefix(model, "o4-mini-")) {
+		reasoning["summary"] = "auto"
+	}
+	if len(reasoning) > 0 {
+		body["reasoning"] = reasoning
 	}
 	if c.Temperature != nil {
 		body["temperature"] = *c.Temperature
@@ -75,6 +87,21 @@ func completeResponses(ctx context.Context, c Config, messages []Message, defs [
 	m := Message{Role: "assistant", Blocks: response.Output}
 	for _, item := range response.Output {
 		switch item["type"] {
+		case "reasoning":
+			summary, _ := item["summary"].([]any)
+			for _, raw := range summary {
+				block, ok := raw.(map[string]any)
+				if !ok || block["type"] != "summary_text" {
+					continue
+				}
+				value, _ := block["text"].(string)
+				if value != "" {
+					if m.Thinking != "" {
+						m.Thinking += "\n\n"
+					}
+					m.Thinking += value
+				}
+			}
 		case "message":
 			content, _ := item["content"].([]any)
 			for _, raw := range content {

@@ -110,13 +110,14 @@ type Chat struct {
 }
 
 type State struct {
-	Connections []Connection `json:"connections"`
-	MCPServers  []MCPServer  `json:"mcp_servers"`
-	Config      Config       `json:"config"`
-	Skills      []Skill      `json:"skills"`
-	Runs        []Run        `json:"runs"`
-	Chats       []Chat       `json:"chats"`
-	Schedules   []Schedule   `json:"schedules"`
+	Connections []Connection    `json:"connections"`
+	MCPServers  []MCPServer     `json:"mcp_servers"`
+	Config      Config          `json:"config"`
+	Skills      []Skill         `json:"skills"`
+	Runs        []Run           `json:"runs"`
+	Chats       []Chat          `json:"chats"`
+	Schedules   []Schedule      `json:"schedules"`
+	Queue       []QueuedMessage `json:"queue,omitempty"`
 }
 
 type Store struct {
@@ -175,6 +176,7 @@ func openStore(dir string) (*Store, error) {
 	if s.state.Config.Timezone == "" {
 		s.state.Config.Timezone = defaultConfig().Timezone
 	}
+	pauseMessages(&s.state, "LiteAgent restarted. Resume this message when ready.")
 	if err = s.saveLocked(); err != nil {
 		return nil, err
 	}

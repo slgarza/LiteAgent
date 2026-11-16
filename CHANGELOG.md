@@ -6,6 +6,12 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 
 ### Added
 
+- Persistent follow-up queue above the composer: send while the agent works, edit or remove pending messages, and use Steer to apply a follow-up to the current reply at the next safe boundary.
+- Queued messages run in order after successful replies. Stop, failed replies and restarts pause pending work; Resume starts only messages that have not been executed.
+
+- Collapsible Thinking history alongside actions, using model-returned reasoning and Responses summaries, with a truthful waiting state and preserved expansion while the chat updates.
+- Model-specific reasoning discovery from Ollama thinking metadata, Claude capabilities and compatible model metadata; the selector shows only reported controls and explains when only Auto is available.
+
 - Optional VS Code extension and a named VS Code provider in Settings, routing text and tool calls through models exposed by the public Language Model API. Includes local token authentication, explicit model authorization, discovery, context checks, cancellation and timeout handling.
 - Local VSIX packaging, protocol tests, an isolated VS Code host test with a synthetic model, and setup documentation/screenshots. Generated extensions are excluded from Git.
 - Windows desktop build without a console, startup error dialogs and a local diagnostic log; the console build remains available for development and terminal commands.
@@ -14,6 +20,8 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 - Automatic refresh of installed Ollama models while idle; the main picker no longer presents a missing default model as ready.
 
 ### Changed
+
+- Switching models resets reasoning to Auto, preventing an effort or toggle from being carried to a model with different controls. `/reasoning` reports model capabilities instead of a generic provider list.
 
 - Clarified source versus compiled-package startup, Go version requirements, Linux and Windows commands, and the absence of published binaries or a tracked `dist/` directory.
 - Added Windows ZIP extraction and project-folder checks, troubleshooting for missing `go.mod`, and conditional startup after a successful build.

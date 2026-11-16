@@ -201,14 +201,14 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 		reply += fmt.Sprintf("\n\nReasoning: %s · history: %d turns · action limit: %d · run timeout: %ds\nActive run: `%s`", c.reasoningMode(), c.historyTurns(), c.MaxSteps, c.runTimeout(), a.active)
 	case "/reasoning":
 		if argument == "" {
-			reply = "Reasoning: **" + c.reasoningMode() + "**. Available for this provider: " + strings.Join(reasoningModes(c.Provider), ", ") + ". Model support varies."
+			reply = a.reasoningReply(c)
 			break
 		}
 		if a.active != "" {
 			reply = "Stop the current reply before changing reasoning."
 			break
 		}
-		c.Reasoning = strings.ToLower(argument)
+		c.Reasoning = argument
 		c.Thinking = nil
 		reply = a.saveCommandConfig(c)
 	case "/reset", "/clear":
@@ -282,6 +282,11 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 			}
 		}
 	case "/stop":
+		a.acceptingSteer = false
+		if err := a.store.Update(func(st *State) error { pauseMessages(st, "Stopped. Resume this message when ready."); return nil }); err != nil {
+			a.queueBlocked = true
+			a.logError(err)
+		}
 		if a.cancel != nil {
 			a.cancel()
 			reply = "Stopping the current reply. Actions already performed remain in effect."
@@ -387,7 +392,7 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 				}
 			}
 		case "reasoning":
-			c.Reasoning = strings.ToLower(value)
+			c.Reasoning = value
 			c.Thinking = nil
 		case "temperature":
 			if value == "auto" {
@@ -449,8 +454,16 @@ func providerURL(provider string) string {
 }
 func (a *App) saveCommandConfig(c Config) string {
 	previous := a.store.Snapshot().Config
+	if previous.Model != c.Model || previous.Provider != c.Provider || previous.BaseURL != c.BaseURL {
+		c.Reasoning, c.Thinking = "", nil
+	}
 	if err := c.Validate(); err != nil {
 		return "Settings not saved: " + err.Error()
+	}
+	if c.reasoningMode() != previous.reasoningMode() {
+		if err := a.validateModelReasoning(c); err != nil {
+			return "Settings not saved: " + err.Error()
+		}
 	}
 	if err := a.store.Update(func(st *State) error { saveConfig(st, c); return nil }); err != nil {
 		return "Could not save settings: " + err.Error()

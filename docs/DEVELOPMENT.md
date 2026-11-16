@@ -28,7 +28,7 @@ go test ./internal/app \
   -run 'TestBrowserIntegration|TestAgentBrowserE2E|TestWorkspaceUI' -v
 ```
 
-`TestWorkspaceUI` covers composer controls, model discovery, missing/empty Ollama setup, automatic discovery of newly installed models, settings, notifications, schedules, chat deletion, Quit and responsive layouts. Its screenshots use fake conversations/providers. Permission prompts and audio devices are stubbed: the test checks UI behavior and audio scheduling, not physical speaker playback. Lifecycle tests check shutdown authorization, cancellation, socket/storage-lock release and desktop instance discovery.
+`TestWorkspaceUI` covers queueing while busy, editing/removing follow-ups, pending Steer state, queue deletion and mobile queue layouts, model-supplied Thinking notes, preserved panel expansion, safe text rendering, metadata-based reasoning choices and unknown-capability fallback, composer controls, model discovery, missing/empty Ollama setup, automatic discovery of newly installed models, settings, notifications, schedules, chat deletion, Quit and responsive layouts. Its screenshots use fake conversations/providers. Permission prompts and audio devices are stubbed: the test checks UI behavior and audio scheduling, not physical speaker playback. Lifecycle tests check shutdown authorization, cancellation, socket/storage-lock release and desktop instance discovery.
 
 Inspect each screenshot before copying selected images into `docs/screenshots/`. Never publish live-user captures. Record fixture provenance in the screenshot index.
 

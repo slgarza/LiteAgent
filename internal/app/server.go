@@ -20,22 +20,28 @@ import (
 )
 
 type App struct {
-	store         *Store
-	browser       *Browser
-	dir           string
-	filesHome     string     // Empty uses the current user's home; tests use an isolated directory.
-	filesMu       sync.Mutex // Serialize local reads and hash-guarded mutations within this app.
-	runMu         sync.Mutex
-	active        string
-	cancel        context.CancelFunc
-	runDone       <-chan struct{}
-	deletingChats map[string]bool
-	root          context.Context
-	shutdown      context.CancelFunc
-	wg            sync.WaitGroup
-	requestID     string
-	requestHash   string
-	wizards       map[string]*onboarding
+	store            *Store
+	browser          *Browser
+	dir              string
+	filesHome        string     // Empty uses the current user's home; tests use an isolated directory.
+	filesMu          sync.Mutex // Serialize local reads and hash-guarded mutations within this app.
+	runMu            sync.Mutex
+	active           string
+	acceptingSteer   bool
+	queueBlocked     bool
+	cancel           context.CancelFunc
+	runDone          <-chan struct{}
+	deletingChats    map[string]bool
+	root             context.Context
+	shutdown         context.CancelFunc
+	wg               sync.WaitGroup
+	requestID        string
+	requestHash      string
+	wizards          map[string]*onboarding
+	reasoningMu      sync.Mutex
+	reasoningKey     [32]byte
+	reasoningInfo    reasoningCapabilities
+	reasoningRequest uint64
 }
 
 func (a *App) logError(err error) { log.Printf("LiteAgent: %v", err) }
@@ -88,10 +94,12 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/schedules", a.schedulesAPI)
 	mux.HandleFunc("POST /api/schedules/{id}", a.schedulesAPI)
 	mux.HandleFunc("GET /api/models", a.models)
+	mux.HandleFunc("GET /api/reasoning", a.reasoning)
 	mux.HandleFunc("PUT /api/model", a.selectModel)
 	mux.HandleFunc("POST /api/test", a.testModel)
 	mux.HandleFunc("POST /api/runs", a.startRun)
 	mux.HandleFunc("POST /api/chat", a.startRun)
+	mux.HandleFunc("POST /api/queue/{id}", a.queueAction)
 	mux.HandleFunc("DELETE /api/chats/{id}", a.deleteChat)
 	mux.HandleFunc("POST /api/stop", a.stopRun)
 	mux.HandleFunc("POST /api/browser/open", a.openBrowser)
@@ -136,7 +144,10 @@ func (a *App) state(w http.ResponseWriter, r *http.Request) {
 	a.runMu.Lock()
 	st := a.store.Snapshot()
 	active := a.active
+	canSteer := a.acceptingSteer
+	queueBlocked := a.queueBlocked
 	a.runMu.Unlock()
+	reasoning := a.cachedReasoning(st.Config)
 	hasKey := st.Config.APIKey != ""
 	st.Config.APIKey = ""
 	for i := range st.Connections {
@@ -176,7 +187,16 @@ func (a *App) state(w http.ResponseWriter, r *http.Request) {
 	if st.Chats == nil {
 		st.Chats = []Chat{}
 	}
-	sendJSON(w, 200, map[string]any{"config": st.Config, "api_key_set": hasKey, "skills": st.Skills, "runs": st.Runs, "chats": st.Chats, "notices": notices, "alerts": alerts, "active": active, "active_chat_id": activeChatID, "downloads_dir": filepath.Join(a.dir, "downloads"), "connections": st.Connections, "mcp_servers": st.MCPServers, "schedules": st.Schedules, "reasoning_modes": reasoningModes(st.Config.Provider), "version": Version, "can_shutdown": a.shutdown != nil})
+	queue := []QueuedMessage{}
+	for _, item := range st.Queue {
+		if pendingMessage(item.Status) && (r.URL.Query().Get("chat_id") == "" || item.ChatID == r.URL.Query().Get("chat_id")) {
+			if queueBlocked && item.Status != "paused" {
+				item.Status, item.Note = "paused", "Could not save the previous update. Check local storage, then Resume."
+			}
+			queue = append(queue, item)
+		}
+	}
+	sendJSON(w, 200, map[string]any{"config": st.Config, "api_key_set": hasKey, "skills": st.Skills, "runs": st.Runs, "chats": st.Chats, "notices": notices, "alerts": alerts, "active": active, "can_steer": canSteer, "queue": queue, "active_chat_id": activeChatID, "downloads_dir": filepath.Join(a.dir, "downloads"), "connections": st.Connections, "mcp_servers": st.MCPServers, "schedules": st.Schedules, "reasoning_modes": reasoning.Modes, "version": Version, "can_shutdown": a.shutdown != nil})
 }
 
 func (a *App) config(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +269,9 @@ func (a *App) selectModel(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, errors.New("the provider changed; refresh the model list and try again"))
 		return
 	}
-	c.Model = strings.TrimSpace(input.Model)
+	if model := strings.TrimSpace(input.Model); model != c.Model {
+		c.Model, c.Reasoning, c.Thinking = model, "", nil
+	}
 	if err := c.Validate(); err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -275,6 +297,8 @@ func (a *App) testModel(w http.ResponseWriter, r *http.Request) {
 }
 
 type ChatRequest struct {
+	QueueIfBusy  bool     `json:"queue_if_busy,omitempty"`
+	QueueID      string   `json:"-"`
 	ModelsReply  string   `json:"-"`
 	RequestID    string   `json:"request_id,omitempty"`
 	ScheduleID   string   `json:"-"`
@@ -299,6 +323,9 @@ func (a *App) startRun(w http.ResponseWriter, r *http.Request) {
 	}
 	if cmd, _ := splitCommand(message); cmd == "/models" {
 		input.ModelsReply = modelsReply(r.Context(), a.store.Snapshot().Config)
+	}
+	if cmd, argument := splitCommand(message); cmd == "/reasoning" && argument == "" {
+		a.discoverReasoning(r.Context(), a.store.Snapshot().Config)
 	}
 	a.runMu.Lock()
 	defer a.runMu.Unlock()
@@ -340,6 +367,16 @@ func (a *App) startRun(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		for _, previous := range a.store.Snapshot().Queue {
+			if previous.RequestID == id {
+				if previous.RequestHash != hash {
+					fail(w, 409, errors.New("request_id was already used for another message"))
+					return
+				}
+				sendJSON(w, 202, previous)
+				return
+			}
+		}
 	}
 	a.requestID = id
 	a.requestHash = hash
@@ -358,6 +395,16 @@ func (a *App) startRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, 202, run)
+		return
+	}
+	if input.QueueIfBusy && (a.active != "" || a.hasQueued()) {
+		item, err := a.enqueueMessage(input)
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		a.launchQueued()
+		sendJSON(w, 202, item)
 		return
 	}
 	run, err := a.beginRun(input, "user", nil)
@@ -420,11 +467,31 @@ func (a *App) beginRun(input ChatRequest, origin string, claim func(*State) erro
 		chatID = newID()
 	}
 	run := Run{ID: newID(), RequestID: a.requestID, RequestHash: a.requestHash, ScheduleID: input.ScheduleID, ScheduledFor: input.ScheduledFor, Reasoning: st.Config.reasoningMode(), ChatID: chatID, Origin: origin, Task: input.Task, Status: "running", CreatedAt: now(), Model: st.Config.Model, SkillIDs: ids, Events: []Event{}}
+	if input.QueueID != "" {
+		found := false
+		for _, item := range st.Queue {
+			if item.ID == input.QueueID && item.Status == "queued" && item.ChatID == chatID {
+				run.RequestID, run.RequestHash = item.RequestID, item.RequestHash
+				found = true
+				break
+			}
+		}
+		if !found {
+			return Run{}, errors.New("message is no longer queued")
+		}
+	}
 	history := chatContext(st, chatID)
 	if origin == "scheduled" {
 		history = nil
 	}
 	err = a.store.Update(func(s *State) error {
+		if input.QueueID != "" {
+			for i := range s.Queue {
+				if s.Queue[i].ID == input.QueueID {
+					s.Queue[i].Status, s.Queue[i].RunID, s.Queue[i].Note = "started", run.ID, ""
+				}
+			}
+		}
 		if claim != nil {
 			if err := claim(s); err != nil {
 				return err
@@ -456,13 +523,19 @@ func (a *App) beginRun(input ChatRequest, origin string, claim func(*State) erro
 	ctx, cancel := context.WithTimeout(a.root, time.Duration(st.Config.runTimeout())*time.Second)
 	a.cancel = cancel
 	a.active = run.ID
+	a.acceptingSteer = true
 	done := make(chan struct{})
 	a.runDone = done
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		defer close(done)
-		defer cancel()
+		defer func() {
+			cancel()
+			close(done)
+			a.runMu.Lock()
+			defer a.runMu.Unlock()
+			a.launchQueued()
+		}()
 		a.executeRun(ctx, run, st.Config, skills, history)
 	}()
 	return run, nil
@@ -566,15 +639,31 @@ func removeChatRecords(st *State, id string) error {
 		}
 	}
 	st.Runs = runs
+	queue := []QueuedMessage{}
+	for _, item := range st.Queue {
+		if item.ChatID != id {
+			queue = append(queue, item)
+		}
+	}
+	st.Queue = queue
 	return nil
 }
 
 func (a *App) stopRun(w http.ResponseWriter, r *http.Request) {
 	a.runMu.Lock()
+	a.acceptingSteer = false
+	err := a.store.Update(func(st *State) error { pauseMessages(st, "Stopped. Resume this message when ready."); return nil })
+	if err != nil {
+		a.queueBlocked = true
+	}
 	if a.cancel != nil {
 		a.cancel()
 	}
 	a.runMu.Unlock()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
 	sendJSON(w, 200, map[string]bool{"stopping": true})
 }
 

@@ -17,7 +17,10 @@ const deletingChatIDs = new Set();
 let modelSource = '', availableModels = [], modelOptionsSignature = '';
 let modelsLoading = false, modelSaving = false, modelsRequest = 0;
 let modelsState = 'checking', lastModelsCheck = 0, serverStopping = false;
+let reasoningSource = '', reasoningInfo = null, reasoningLoading = false, reasoningRequest = 0;
 let pendingSubmission = null, pendingSchedule = null;
+let queueSignature = '', queueEditing = null;
+const queueBusy = new Set();
 let settingsSource = null;
 let scheduleSignature = '';
 let commandIndex = 0, commandMatches = [];
@@ -53,18 +56,23 @@ async function busy(button, label, work) {
 }
 function updateControls() {
   const active = !serverStopping && !!state?.active;
-  $('send').hidden = active && !$('message').value.trim().startsWith('/');
+  const hasMessage = !!$('message').value.trim(), command = $('message').value.trim().startsWith('/');
+  $('send').hidden = active && !hasMessage;
   $('stop').hidden = serverStopping || !active;
-  if (!$('send').hasAttribute('aria-busy')) $('send').disabled = serverStopping || !initialized || modelSaving || !ollamaReady() && !$('message').value.trim().startsWith('/');
-  $('reasoning-select').disabled = !initialized || modelSaving || active;
+  $('send').title = active && !command ? 'Queue message' : 'Send message';
+  if (!$('send').hasAttribute('aria-busy')) $('send').setAttribute('aria-label', $('send').title);
+  $('message').placeholder = active ? 'Add a follow-up…' : 'Message LiteAgent…';
+  $('composer-hint').textContent = active ? 'Enter to queue · Steer applies a queued message to this reply' : 'Enter to send · Shift+Enter for a new line · / or Ctrl+K for commands';
+  if (!$('send').hasAttribute('aria-busy')) $('send').disabled = serverStopping || !initialized || modelSaving || !active && !ollamaReady() && !command;
+  $('reasoning-select').disabled = !initialized || modelSaving || active || reasoningLoading || $('reasoning-select').options.length < 2;
   $('show-settings').disabled = !initialized || modelSaving || active;
   $('model-select').disabled = !initialized || modelsLoading || modelSaving || active;
   $('model-menu-toggle').disabled = serverStopping || !initialized || modelSaving;
   $('refresh-models').disabled = !initialized || modelsLoading || modelSaving;
   $('model-select').title = active ? 'Finish or stop the current reply before switching models.' : state?.config.model || 'Model for all chats';
   const run = state?.runs.find(run => run.id === state.active);
-  const lastTool = run?.events.filter(event => event.kind === 'tool').at(-1);
-  $('run-status').textContent = active ? (lastTool ? toolNames[lastTool.name] || 'Working…' : 'Thinking…') : '';
+  const lastEvent = run?.events.at(-1);
+  $('run-status').textContent = active ? (!lastEvent || lastEvent.kind === 'status' && lastEvent.name === 'model' ? 'Waiting for model…' : lastEvent.kind === 'tool' ? toolNames[lastEvent.name] || 'Working…' : 'Working…') : '';
   $('quit-app').hidden = !state?.can_shutdown;
   renderOllamaSetup();
 }
@@ -200,6 +208,8 @@ async function changeModel() {
     revision++;
     if (source === modelSource) {
       state.config.model = result.model;
+      state.config.reasoning = ''; delete state.config.thinking;
+      syncReasoning();
       feedback('model-feedback', 'Model changed · used for all chats');
     }
   } catch (error) {
@@ -290,7 +300,7 @@ function trace(run) {
   details.append(el('summary', actions.length + (actions.length === 1 ? ' action' : ' actions')));
   const list = el('ol', undefined, 'events');
   for (const event of run.events) {
-    if (event.kind === 'status') continue;
+    if (event.kind === 'status' || event.kind === 'thinking' || event.kind === 'user') continue;
     const row = el('li', undefined, 'event ' + event.kind);
     const header = el('div', undefined, 'event-head');
     const time = el('time', new Date(event.time).toLocaleTimeString('en-US'));
@@ -308,6 +318,43 @@ function trace(run) {
     list.append(row);
   }
   details.append(list);
+  return details;
+}
+function thinkingTrace(run) {
+  const notes = run.events.filter(event => event.kind === 'thinking' && event.content.trim());
+  const running = run.status === 'running';
+  if (!notes.length && !running) return null;
+  const details = el('details', undefined, 'thinking-trace');
+  const summary = el('summary');
+  const lastEvent = run.events.at(-1);
+  const waiting = running && (!lastEvent || lastEvent.kind === 'status' && lastEvent.name === 'model');
+  const indicator = el('span', undefined, 'thinking-indicator');
+  indicator.classList.toggle('is-active', running);
+  indicator.setAttribute('aria-hidden', 'true');
+  summary.append(indicator, el('span', notes.length ? 'Thinking' : waiting ? 'Waiting for model' : 'Working'));
+  if (notes.length) summary.append(el('span', notes.length + (notes.length === 1 ? ' note' : ' notes'), 'thinking-count'));
+  details.append(summary);
+  const body = el('div', undefined, 'thinking-body');
+  body.append(el('p', run.model, 'thinking-model'));
+  if (notes.length) {
+    const list = el('ol', undefined, 'events');
+    for (const event of notes) {
+      const row = el('li', undefined, 'event');
+      const header = el('div', undefined, 'event-head');
+      const time = el('time', new Date(event.time).toLocaleTimeString('en-US'));
+      time.dateTime = event.time;
+      header.append(time, el('span', event.name || 'Model reasoning'));
+      row.append(header, el('p', event.content));
+      list.append(row);
+    }
+    body.append(list);
+  }
+  if (running) {
+    const status = el('p', waiting ? 'Waiting for the model response. Reasoning will appear here if the model shares it.' : 'The reply is still in progress.', 'thinking-status');
+    status.setAttribute('role', 'status');
+    body.append(status);
+  }
+  details.append(body);
   return details;
 }
 function renderConversation() {
@@ -339,6 +386,7 @@ function renderConversation() {
     changed = true;
     const existing = document.getElementById('turn-' + run.id);
     const wasOpen = existing?.querySelector('.action-trace')?.open;
+    const thinkingWasOpen = existing?.querySelector('.thinking-trace')?.open;
     const turn = el('article', undefined, 'turn'); turn.id = 'turn-' + run.id;
     const user = el('div', undefined, 'message user-message');
     user.setAttribute('aria-label', 'You');
@@ -349,19 +397,26 @@ function renderConversation() {
       const names = run.skill_ids.map(id => state.skills.find(skill => skill.id === id)?.name).filter(Boolean);
       if (names.length) assistant.append(el('p', 'Skills loaded: ' + names.join(', '), 'loaded-skills'));
     }
+    const thinking = thinkingTrace(run);
+    if (thinking) { thinking.open = !!thinkingWasOpen; assistant.append(thinking); }
     const activity = trace(run);
     if (activity) { activity.open = !!wasOpen; assistant.append(activity); }
     const text = run.result || run.events.filter(event => event.kind === 'assistant').map(event => event.content).join('\n\n');
     if (text) assistant.append(markdown(text));
-    if (run.status === 'running') assistant.append(el('p', text ? 'Working…' : 'Thinking…', 'thinking'));
-    else if (run.status !== 'completed') assistant.append(el('p', statusNames[run.status], 'run-error'));
+    if (run.status !== 'running' && run.status !== 'completed') assistant.append(el('p', statusNames[run.status], 'run-error'));
     if (run.status === 'completed') {
       const actions = el('div', undefined, 'message-actions');
       const copy = el('button', 'Copy', 'text-button'); copy.type = 'button';
       copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(run.result); copy.textContent = 'Copied'; } catch { feedback('chat-feedback', 'Copy is unavailable in this browser.', true); } });
       actions.append(copy); assistant.append(actions);
     }
-    if(run.origin==='reminder' || run.origin==='scheduled') { assistant.prepend(el('p',run.origin==='reminder'?'Reminder':'Scheduled skill','scheduled-label')); turn.append(assistant); } else turn.append(user, assistant);
+    const steers = run.events.filter(event => event.kind === 'user').map(event => {
+      const message = el('div', undefined, 'message user-message steered-message');
+      message.setAttribute('aria-label', 'Your steering instruction');
+      message.append(el('span', '↳ Steered', 'steered-label'), el('p', event.content));
+      return message;
+    });
+    if(run.origin==='reminder' || run.origin==='scheduled') { assistant.prepend(el('p',run.origin==='reminder'?'Reminder':'Scheduled skill','scheduled-label')); turn.append(...steers, assistant); } else turn.append(user, ...steers, assistant);
     if (existing) existing.replaceWith(turn); else container.append(turn);
   }
   if (changed && (nearBottom || changedChat)) scroller.scrollTop = scroller.scrollHeight;
@@ -377,7 +432,8 @@ async function refresh() {
     initialized = true;
     $('connection').textContent = 'Connected locally'; $('connection').classList.remove('error');
     syncModelPicker();
-    renderReasoning(); renderSchedules(); renderManagement(); renderStatus(); renderHistory(); renderConversation(); updateControls(); notifyUpdates(state.alerts || []);
+    syncReasoning();
+    renderReasoning(); renderSchedules(); renderManagement(); renderStatus(); renderHistory(); renderConversation(); renderQueue(); updateControls(); notifyUpdates(state.alerts || []);
   } catch (error) {
     if (serverStopping) return;
     $('connection').textContent = 'Connection lost. Retrying…'; $('connection').classList.add('error');
@@ -389,19 +445,18 @@ $('chat-form').addEventListener('submit', async event => {
   if ($('send').hasAttribute('aria-busy')) return;
   if (modelSaving) return;
   if (!$('message').value.trim()) return;
-  if(state?.active && !$('message').value.trim().startsWith('/')) { feedback('chat-feedback','Wait for this reply or press Stop.',true); return; }
   let message = $('message').value;
   const submittedChat = chatID;
   const submittedText = message;
   if (openCommandUI(message.trim())) { $('message').value = ''; renderCommands(); updateControls(); return; }
   if (serverStopping) return;
-  if (!message.trim().startsWith('/') && !ollamaReady()) { renderOllamaSetup(); $('ollama-setup').scrollIntoView({block: 'nearest'}); return; }
+  if (!message.trim().startsWith('/') && !state.active && !ollamaReady()) { renderOllamaSetup(); $('ollama-setup').scrollIntoView({block: 'nearest'}); return; }
   feedback('chat-feedback', '');
   await busy($('send'), 'Sending…', async () => {
     try {
       const fingerprint = JSON.stringify([submittedChat, message]);
       if (pendingSubmission?.fingerprint !== fingerprint) pendingSubmission = {fingerprint, id: crypto.randomUUID()};
-      const run = await api('chat', 'POST', {message, chat_id: submittedChat || '', request_id: pendingSubmission.id, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone});
+      const run = await api('chat', 'POST', {message, chat_id: submittedChat || '', request_id: pendingSubmission.id, queue_if_busy: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone});
       pendingSubmission = null;
       if (chatID !== submittedChat) { await refresh(); return; }
       revision++;
@@ -409,6 +464,7 @@ $('chat-form').addEventListener('submit', async event => {
       const url = new URL(location.href); url.searchParams.set('chat', chatID); history.replaceState(null, '', url);
       if ($('message').value === submittedText) $('message').value = '';
       renderCommands();
+      if (['queued', 'paused', 'steering'].includes(run.status)) feedback('chat-feedback', run.status === 'paused' ? 'Message saved. Resume it from the queue.' : 'Message queued. Use Steer to apply it to the current reply.');
       await refresh(); $('message-scroll').scrollTop = $('message-scroll').scrollHeight;
     } catch (error) { feedback('chat-feedback', error.message, true); }
   });
@@ -422,9 +478,65 @@ $('new-chat').addEventListener('click', () => { $('message').value = ''; selectC
 $('toggle-sidebar').addEventListener('click', () => { const open = document.body.classList.toggle('sidebar-open'); $('toggle-sidebar').setAttribute('aria-expanded', String(open)); });
 $('stop').addEventListener('click', async () => { try { await api('stop', 'POST', {}); feedback('chat-feedback', 'Stopping…'); } catch (error) { feedback('chat-feedback', error.message, true); } });
 function sendCommand(command) { $('message').value=command; $('chat-form').requestSubmit(); }
+
+function renderQueue() {
+  const items = state.queue || [];
+  const signature = JSON.stringify([items, state.active, state.can_steer, state.active_chat_id, chatID, [...queueBusy]]);
+  if (signature === queueSignature) return;
+  queueSignature = signature;
+  $('message-queue').hidden = !items.length;
+  $('queue-summary').textContent = items.length + (items.length === 1 ? ' queued message' : ' queued messages');
+  $('message-queue').querySelector('.queue-help').textContent = items.some(item => item.status === 'paused') ? 'Paused messages wait for Resume' : 'Sent after the current reply';
+  const rows = items.map(item => {
+    const row = el('li', undefined, 'queue-row'); row.dataset.queueId = item.id;
+    const icon = el('span', '↳', 'queue-symbol'); icon.setAttribute('aria-hidden', 'true');
+    const content = el('div', undefined, 'queue-content');
+    const text = el('p', item.message, 'queue-message'); text.title = item.message; content.append(text);
+    if (item.note) content.append(el('p', item.note, 'queue-note'));
+    row.append(icon, content);
+    const controls = el('div', undefined, 'queue-controls');
+    const action = (label, name, disabled = false) => {
+      const button = el('button', label, 'text-button queue-' + name); button.type = 'button';
+      button.disabled = disabled || queueBusy.has(item.id);
+      button.addEventListener('click', () => queueAction(item, name));
+      controls.append(button); return button;
+    };
+    if (item.status === 'paused') action('Resume', 'resume');
+    else action(item.status === 'steering' ? 'Steering…' : '↪ Steer', 'steer', item.status === 'steering' || !state.can_steer || state.active_chat_id !== item.chat_id);
+    const edit = action('✎', 'edit', item.status === 'steering'); edit.title = 'Edit queued message'; edit.setAttribute('aria-label', edit.title);
+    const remove = action('×', 'remove'); remove.title = 'Remove queued message'; remove.setAttribute('aria-label', remove.title);
+    row.append(controls); return row;
+  });
+  $('queue-list').replaceChildren(...rows);
+}
+
+async function queueAction(item, action) {
+  if (action === 'edit') {
+    queueEditing = {...item}; $('queue-edit-message').value = item.message;
+    feedback('queue-edit-feedback', ''); $('queue-edit-dialog').showModal(); $('queue-edit-message').focus(); return;
+  }
+  const runID = state.active;
+  queueBusy.add(item.id); renderQueue();
+  try {
+    await api('queue/' + encodeURIComponent(item.id), 'POST', {action, run_id: action === 'steer' ? runID : ''});
+    feedback('chat-feedback', action === 'steer' ? 'Steering saved. It will apply when the current step finishes.' : action === 'remove' ? 'Queued message removed.' : 'Message resumed.');
+  } catch (error) { feedback('chat-feedback', error.message, true); }
+  finally { queueBusy.delete(item.id); await refresh(); }
+}
+$('queue-edit-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const item = queueEditing;
+  if (!item) return;
+  await busy($('save-queue-message'), 'Saving…', async () => {
+    try {
+      await api('queue/' + encodeURIComponent(item.id), 'POST', {action: 'edit', message: $('queue-edit-message').value, expected_message: item.message});
+      $('queue-edit-dialog').close(); queueEditing = null; await refresh();
+    } catch (error) { feedback('queue-edit-feedback', error.message, true); }
+  });
+});
 $('help').addEventListener('click', () => openPalette());
 $('model-select').addEventListener('change', changeModel);
-$('refresh-models').addEventListener('click', loadModels);
+$('refresh-models').addEventListener('click', () => { loadModels(); loadReasoning(); });
 $('onboard')?.addEventListener('click',()=>showSettings('connections'));
 $('message').addEventListener('input', () => { updateControls(); commandIndex = 0; renderCommands(); });
 async function poll() { await refresh(); setTimeout(poll, !serverStopping && state?.active ? 800 : 3000); }
@@ -491,14 +603,46 @@ function setModelMenu(open, returnFocus = false) {
 }
 function renderReasoning() {
   if (modelSaving) return;
-  const select = $('reasoning-select'), modes = state.reasoning_modes || ['auto'];
-  if (select.dataset.modes !== JSON.stringify(modes)) {
-    select.replaceChildren(...modes.map(mode => { const option = el('option', mode === 'auto' ? 'Auto (default)' : reasoningLabel(mode)); option.value = mode; return option; }));
-    select.dataset.modes = JSON.stringify(modes);
+  const select = $('reasoning-select'), modes = reasoningInfo?.modes || ['auto'];
+  const selected = currentReasoning(), unverified = !modes.includes(selected);
+  const signature = JSON.stringify([modes, selected, reasoningInfo?.default]);
+  if (select.dataset.modes !== signature) {
+    select.replaceChildren(...modes.map(mode => {
+      const label = mode === 'auto' ? (reasoningInfo?.default ? 'Auto (' + reasoningLabel(reasoningInfo.default) + ')' : 'Auto (model default)') : reasoningLabel(mode);
+      const option = el('option', label); option.value = mode; return option;
+    }));
+    if (unverified) {
+      const option = el('option', reasoningLabel(selected) + ' (saved · unverified)'); option.value = selected; option.disabled = true; select.append(option);
+    }
+    select.dataset.modes = signature;
   }
-  select.value = currentReasoning();
-  select.title = 'Used for all chats. Available levels depend on the model. Auto sends no override.';
+  select.value = selected;
+  $('reasoning-help').textContent = reasoningLoading ? 'Reading this model’s reasoning controls…' : (reasoningInfo?.note || 'Reading this model’s reasoning controls…') + (unverified ? ' The saved override is not confirmed for this model; choose Auto to reset it.' : '');
+  select.title = $('reasoning-help').textContent;
   renderComposerModel();
+}
+function reasoningModelSource(config) { return JSON.stringify([config.provider, config.base_url, config.model, config.connection_id || '']); }
+function syncReasoning() {
+  const source = reasoningModelSource(state.config);
+  if (source !== reasoningSource) {
+    reasoningSource = source; reasoningInfo = null;
+    loadReasoning();
+  }
+}
+async function loadReasoning() {
+  if (!state || serverStopping) return;
+  const source = reasoningSource, request = ++reasoningRequest;
+  reasoningLoading = true; renderReasoning(); updateControls();
+  try {
+    const result = await api('reasoning');
+    if (serverStopping || request !== reasoningRequest || source !== reasoningSource) return;
+    if (result.provider !== state.config.provider || result.base_url !== state.config.base_url || result.model !== state.config.model) return;
+    reasoningInfo = result.reasoning;
+  } catch {
+    if (request === reasoningRequest && source === reasoningSource) reasoningInfo = {modes: ['auto'], note: 'Could not read reasoning controls. Use Refresh models to retry.'};
+  } finally {
+    if (request === reasoningRequest) { reasoningLoading = false; renderReasoning(); updateControls(); }
+  }
 }
 function generationSource() { return {provider: state.config.provider, model: state.config.model, base_url: state.config.base_url}; }
 async function saveGeneration(settings, source) {

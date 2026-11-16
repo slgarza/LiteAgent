@@ -128,6 +128,7 @@ func (a *App) processDue(current time.Time) {
 	if a.root.Err() != nil {
 		return
 	}
+	a.launchQueued()
 	schedules := a.store.Snapshot().Schedules
 	// Oldest due occurrence first prevents a frequent job starving another one.
 	sort.SliceStable(schedules, func(i, j int) bool { return schedules[i].NextRun < schedules[j].NextRun })

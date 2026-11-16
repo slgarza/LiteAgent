@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,39 @@ import (
 	"sync/atomic"
 	"testing"
 )
+
+func TestResponsesOnlyRequestsSummariesWithReasoning(t *testing.T) {
+	for _, test := range []struct {
+		model, effort string
+		summary       bool
+	}{
+		{"gpt-4.1", "auto", false}, {"custom-model", "auto", false},
+		{"gpt-5-chat-latest", "auto", false},
+		{"gpt-5", "auto", true}, {"o4-mini", "auto", true},
+		{"custom-model", "high", false}, {"o1", "high", false}, {"gpt-5", "none", false},
+	} {
+		t.Run(test.model+test.effort, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var request map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&request)
+				reasoning, _ := request["reasoning"].(map[string]any)
+				if (reasoning["summary"] == "auto") != test.summary {
+					t.Error("incorrect summary request")
+				}
+				if !test.summary && test.effort == "auto" && request["reasoning"] != nil {
+					t.Error("added reasoning to ordinary model")
+				}
+				fmt.Fprint(w, `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"Done."}]}]}`)
+			}))
+			defer server.Close()
+			c := defaultConfig()
+			c.Provider, c.BaseURL, c.Model, c.Reasoning = "openai-responses", server.URL, test.model, test.effort
+			if _, err := complete(context.Background(), c, []Message{{Role: "user", Content: "Hello"}}, nil); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestResponsesProviderPreservesToolLoopAndReasoning(t *testing.T) {
 	a := newTestApp(t)
@@ -19,7 +53,7 @@ func TestResponsesProviderPreservesToolLoopAndReasoning(t *testing.T) {
 		}
 		var p map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&p)
-		if p["store"] != false || p["reasoning"].(map[string]any)["effort"] != "high" || p["max_output_tokens"] != float64(8000) {
+		if p["store"] != false || p["reasoning"].(map[string]any)["effort"] != "high" || p["reasoning"].(map[string]any)["summary"] != "auto" || p["max_output_tokens"] != float64(8000) {
 			t.Errorf("wrong request controls: %v", p)
 		}
 		tools := p["tools"].([]any)
@@ -44,6 +78,7 @@ func TestResponsesProviderPreservesToolLoopAndReasoning(t *testing.T) {
 	defer model.Close()
 	_ = a.store.Update(func(st *State) error {
 		st.Config.Provider = "openai-responses"
+		st.Config.Model = "gpt-5"
 		st.Config.BaseURL = model.URL
 		st.Config.APIKey = "responses-secret"
 		st.Config.Reasoning = "high"

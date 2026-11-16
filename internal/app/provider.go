@@ -22,13 +22,15 @@ type ToolCall struct {
 	Function FunctionCall `json:"function"`
 }
 type Message struct {
-	Thinking   string           `json:"thinking,omitempty"`
-	Blocks     []map[string]any `json:"-"`
-	Role       string           `json:"role"`
-	Content    string           `json:"content"`
-	ToolCalls  []ToolCall       `json:"tool_calls,omitempty"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
-	ToolName   string           `json:"tool_name,omitempty"`
+	Thinking         string           `json:"thinking,omitempty"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	Reasoning        string           `json:"reasoning,omitempty"`
+	Blocks           []map[string]any `json:"-"`
+	Role             string           `json:"role"`
+	Content          string           `json:"content"`
+	ToolCalls        []ToolCall       `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
+	ToolName         string           `json:"tool_name,omitempty"`
 }
 type FunctionDef struct {
 	Name        string         `json:"name"`
@@ -120,6 +122,12 @@ func complete(ctx context.Context, c Config, msgs []Message, defs []ToolDef) (Me
 		v := map[string]any{"role": m.Role, "content": m.Content}
 		if c.Provider == "ollama" && m.Thinking != "" {
 			v["thinking"] = m.Thinking
+		}
+		if c.Provider == "openai" && m.ReasoningContent != "" {
+			v["reasoning_content"] = m.ReasoningContent
+		}
+		if c.Provider == "openai" && m.Reasoning != "" {
+			v["reasoning"] = m.Reasoning
 		}
 		if len(m.ToolCalls) > 0 {
 			calls := []map[string]any{}
@@ -297,7 +305,15 @@ func completeAnthropic(ctx context.Context, c Config, msgs []Message, defs []Too
 	}
 	m := Message{Role: "assistant", Blocks: res.Content}
 	for _, b := range res.Content {
-		if b["type"] == "text" {
+		if b["type"] == "thinking" {
+			text, _ := b["thinking"].(string)
+			if text != "" {
+				if m.Thinking != "" {
+					m.Thinking += "\n\n"
+				}
+				m.Thinking += text
+			}
+		} else if b["type"] == "text" {
 			text, _ := b["text"].(string)
 			m.Content += text
 		} else if b["type"] == "tool_use" {

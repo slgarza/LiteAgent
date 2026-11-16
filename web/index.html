@@ -55,6 +55,10 @@
         <div id="messages" class="messages"><div class="welcome"><h1>What can I help with?</h1><p>Just ask. Your browser, skills and reminders are here.</p><button id="onboard" type="button" class="text-button">Connect a model</button></div></div>
       </div>
       <div class="composer-area">
+        <section id="message-queue" class="message-queue" aria-label="Queued messages" hidden>
+          <div class="queue-heading"><span id="queue-summary"></span><span class="queue-help">Sent after the current reply</span></div>
+          <ol id="queue-list" class="queue-list"></ol>
+        </section>
         <form id="chat-form" class="composer">
           <label for="message" class="visually-hidden">Message LiteAgent</label>
           <div id="command-menu" class="command-menu" role="listbox" aria-label="Commands" hidden></div>
@@ -75,17 +79,27 @@
             <label for="model-select">Model</label>
             <select id="model-select" class="model-picker" aria-describedby="model-feedback" disabled><option>Loading models…</option></select>
             <label for="reasoning-select">Reasoning</label>
-            <select id="reasoning-select" class="model-picker" disabled><option value="auto">Auto</option></select>
+            <select id="reasoning-select" class="model-picker" aria-describedby="reasoning-help" disabled><option value="auto">Auto</option></select>
+            <p id="reasoning-help" class="reasoning-help muted" role="status">Reading this model’s reasoning controls…</p>
             <div class="model-menu-actions"><button id="about-model" class="text-button" type="button" hidden>About this model</button><button id="refresh-models" class="text-button" type="button" aria-label="Refresh available models" disabled>Refresh models</button></div>
             <p class="muted">Applies to all chats.</p>
           </section>
         </form>
         <p id="model-feedback" class="model-feedback feedback" role="status"></p>
         <p id="chat-feedback" class="feedback" role="status"></p>
-        <p class="composer-hint">Enter to send · Shift+Enter for a new line · / or Ctrl+K for commands</p>
+        <p id="composer-hint" class="composer-hint">Enter to send · Shift+Enter for a new line · / or Ctrl+K for commands</p>
       </div>
     </main>
   </div>
+  <dialog id="queue-edit-dialog" class="glass-dialog" aria-labelledby="queue-edit-title">
+    <form id="queue-edit-form">
+      <div class="dialog-heading"><h2 id="queue-edit-title">Edit queued message</h2><button type="button" data-close="queue-edit-dialog" aria-label="Close editor">×</button></div>
+      <label for="queue-edit-message" class="visually-hidden">Queued message</label>
+      <textarea id="queue-edit-message" required maxlength="12000" rows="4"></textarea>
+      <p id="queue-edit-feedback" class="feedback" role="status"></p>
+      <div class="dialog-actions"><button type="button" data-close="queue-edit-dialog">Cancel</button><button type="submit" id="save-queue-message" class="primary">Save message</button></div>
+    </form>
+  </dialog>
   <dialog id="model-dialog" class="glass-dialog model-dialog" aria-labelledby="model-dialog-title">
     <div class="dialog-heading"><h2 id="model-dialog-title">About this model</h2><button type="button" data-close="model-dialog" aria-label="Close model details">×</button></div>
       <div id="model-description" class="model-description" role="status" hidden>

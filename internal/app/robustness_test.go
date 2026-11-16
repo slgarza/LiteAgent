@@ -103,7 +103,7 @@ func TestGenerationPatchValidatesAndPreservesCredentials(t *testing.T) {
 	if after.APIKey != before.APIKey || after.Temperature == nil || *after.Temperature != 0 || after.reasoningMode() != "off" || after.TimeoutSec != 1200 || after.runTimeout() != 1800 {
 		t.Fatal("lost settings or credential")
 	}
-	for _, settings := range []map[string]any{{"reasoning": "xhigh"}, {"temperature": -1}, {"max_tokens": -1}, {"history_turns": 101}, {"timeout_sec": 9}, {"timeout_sec": 86401}, {"timeout_sec": nil}, {"timeout_sec": 900.5}, {"run_timeout_sec": 1}, {"context_tokens": 100}, {"api_key": "overwritten"}, {"max_steps": 0}, {"reasoning": nil}} {
+	for _, settings := range []map[string]any{{"reasoning": "invalid mode"}, {"temperature": -1}, {"max_tokens": -1}, {"history_turns": 101}, {"timeout_sec": 9}, {"timeout_sec": 86401}, {"timeout_sec": nil}, {"timeout_sec": 900.5}, {"run_timeout_sec": 1}, {"context_tokens": 100}, {"api_key": "overwritten"}, {"max_steps": 0}, {"reasoning": nil}} {
 		input["settings"] = settings
 		if w := callAPI(t, a, "PATCH", "/api/generation", input, nil); w.Code != 400 {
 			t.Fatalf("accepted %v: %s", settings, w.Body.String())

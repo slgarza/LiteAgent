@@ -27,6 +27,23 @@ func TestWorkspaceUI(t *testing.T) {
 	replyStarted, replyCancelled, releaseReply := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/show":
+			fmt.Fprint(w, `{"thinking":{"values":[false,true],"default":true}}`)
+		case "/models/test-agent":
+			fmt.Fprint(w, `{"id":"test-agent","supported_reasoning_efforts":["low","high","xhigh"]}`)
+		case "/models/test-model":
+			fmt.Fprint(w, `{"id":"test-model"}`)
+		case "/responses":
+			var request struct {
+				Input []map[string]any `json:"input"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&request)
+			last := request.Input[len(request.Input)-1]
+			if last["type"] != "function_call_output" {
+				fmt.Fprint(w, `{"status":"completed","output":[{"type":"reasoning","encrypted_content":"fixture-private-context","summary":[{"type":"summary_text","text":"I’ll check the available reporting procedure, then identify what needs to be verified before summarizing the report."}]},{"type":"function_call","call_id":"fixture-skills","name":"skills_list","arguments":"{}"}]}`)
+			} else {
+				fmt.Fprint(w, `{"status":"completed","output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"The procedure calls for checking the reporting period. I have the checklist ready; the report itself is still needed to verify its figures."}]},{"type":"message","content":[{"type":"output_text","text":"The reporting checklist is ready.\n\n- Confirm the reporting period.\n- Compare the totals with the source data.\n- Highlight changes and anything that needs follow-up.\n\nShare the report when you’re ready, and I’ll apply these checks."}]}]}`)
+			}
 		case "/api/chat":
 			_, _ = io.Copy(io.Discard, r.Body)
 			close(replyStarted)
@@ -333,9 +350,44 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	}
 	script("refresh()")
 	await("document.getElementById('composer-model').textContent==='test-agent' && !document.getElementById('refresh-models').disabled")
+	fixture := waitRun(t, a, postChat(t, a, "", "Prepare a checklist for reviewing the weekly report.").ID)
+	a.wg.Wait()
+	if fixture.Status != "completed" {
+		t.Fatal("thinking fixture failed")
+	}
+	script(fmt.Sprintf("selectChat(%q)", fixture.ChatID))
+	await("document.querySelector('.thinking-trace summary')?.textContent.includes('2 notes') && document.querySelector('.action-trace summary')?.textContent==='1 action'")
+	script("[...document.querySelectorAll('.notification-toast')].forEach(n=>n.dismissNotification())")
+	if string(script("return !document.querySelector('.thinking-trace').open && !document.querySelector('.action-trace').textContent.includes('Reasoning summary') && !document.body.innerText.includes('fixture-private-context')")) != "true" {
+		t.Fatal("thinking was expanded by default, duplicated in actions, or exposed opaque data")
+	}
+	script("document.querySelector('.thinking-trace summary').click();document.querySelector('.action-trace summary').click()")
+	if err := a.store.Update(func(st *State) error {
+		for i := range st.Runs {
+			if st.Runs[i].ID == fixture.ID {
+				st.Runs[i].Result += "\n\nReady when you are."
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	script("refresh()")
+	await("document.querySelector('.markdown').textContent.includes('Ready when you are.')")
+	if string(script("return document.querySelector('.thinking-trace').open && document.querySelector('.action-trace').open && document.querySelectorAll('.thinking-trace .event').length===2")) != "true" {
+		t.Fatal("polling collapsed the thinking/actions panels")
+	}
+	if string(script(`const base={status:'completed',model:'fixture',events:[]};const unsafe=thinkingTrace({...base,events:[{kind:'thinking',time:new Date().toISOString(),content:'<img src=x onerror=alert(1)>'}]});return thinkingTrace(base)===null && unsafe.querySelector('img')===null && unsafe.textContent.includes('<img')`)) != "true" {
+		t.Fatal("reasoning rendered HTML or fabricated a note")
+	}
+	screenshot("thinking-desktop.png")
+	script("document.querySelector('.action-trace summary').click()")
 	screenshot("composer-desktop.png")
 	script("document.getElementById('model-menu-toggle').click()")
-	await("!document.getElementById('model-menu').hidden")
+	await("!document.getElementById('model-menu').hidden && !reasoningLoading")
+	if string(script("return [...document.getElementById('reasoning-select').options].map(o=>o.value).join(',')==='auto,low,high,xhigh' && document.getElementById('reasoning-help').textContent.includes('reported')")) != "true" {
+		t.Fatal("picker advertised controls not supplied by the selected model")
+	}
 	if string(script("return document.getElementById('about-model').hidden && document.getElementById('model-description').hidden && [...document.getElementById('model-select').options].every(o=>o.textContent===o.value) && !document.body.textContent.includes('Profile not available')")) != "true" {
 		t.Fatal("API models showed an unavailable profile")
 	}
@@ -354,6 +406,15 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 		click("#message")
 		await("document.getElementById('model-menu').hidden")
 		screenshot(fmt.Sprintf("composer-%d.png", width))
+	}
+	script("document.getElementById('model-menu-toggle').click();document.getElementById('model-select').value='test-model';document.getElementById('model-select').dispatchEvent(new Event('change'))")
+	await("document.getElementById('composer-model').textContent==='test-model' && !reasoningLoading && document.getElementById('composer-reasoning').textContent==='Auto'")
+	if string(script("return document.getElementById('reasoning-select').options.length===1 && document.getElementById('reasoning-select').disabled && document.getElementById('reasoning-help').textContent.includes('does not report')")) != "true" {
+		t.Fatal("missing metadata fell back to generic levels")
+	}
+	script("document.getElementById('close-model-menu').click()")
+	if w := callAPI(t, a, "DELETE", "/api/chats/"+fixture.ChatID, nil, nil); w.Code != 200 {
+		t.Fatal("could not remove thinking fixture")
 	}
 	if w := callAPI(t, a, "POST", "/api/connections/"+bridgeConnection.ID, map[string]string{"action": "activate"}, nil); w.Code != 200 {
 		t.Fatal(w.Body.String())
@@ -447,11 +508,45 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	script("document.getElementById('message').value='UI active reply';document.getElementById('chat-form').requestSubmit()")
 	waitChatSignal(t, replyStarted)
 	await("!document.getElementById('stop').hidden && [...document.querySelectorAll('.history-item')].some(b=>b.title==='UI active reply')")
+	await("[...document.querySelectorAll('.thinking-trace')].at(-1)?.textContent.includes('Waiting for model') && [...document.querySelectorAll('.thinking-trace')].at(-1).querySelectorAll('.event').length===0")
 	script("document.getElementById('model-menu-toggle').click()")
 	if string(script("return !document.getElementById('model-menu').hidden && document.getElementById('model-select').disabled && document.getElementById('reasoning-select').disabled && document.getElementById('send').querySelector('svg')!==null")) != "true" {
 		t.Fatal("composer controls did not preserve the active reply state")
 	}
 	script("document.getElementById('close-model-menu').click()")
+	// Follow-ups are durable queue entries while the synthetic model is blocked.
+	script("document.getElementById('message').value='Keep the explanation concise.';document.getElementById('message').dispatchEvent(new Event('input'))")
+	if string(script("return !document.getElementById('send').hidden && !document.getElementById('stop').hidden && document.getElementById('send').getAttribute('aria-label')==='Queue message'")) != "true" {
+		t.Fatal("active composer did not offer Queue and Stop")
+	}
+	script("document.getElementById('message').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))")
+	await("document.querySelectorAll('.queue-row').length===1 && document.getElementById('message').value===''")
+	script("document.getElementById('message').value='Add a short checklist at the end.';document.getElementById('chat-form').requestSubmit()")
+	await("document.querySelectorAll('.queue-row').length===2 && document.getElementById('message').value===''")
+	script("document.querySelector('.queue-edit').click()")
+	await("document.getElementById('queue-edit-dialog').open")
+	script("document.getElementById('queue-edit-message').value='Focus on the changes needed for the next release.';document.getElementById('queue-edit-form').requestSubmit()")
+	await("!document.getElementById('queue-edit-dialog').open && document.querySelector('.queue-message').textContent==='Focus on the changes needed for the next release.'")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
+	screenshot("queue-desktop.png")
+	for _, width := range []int{390, 320} {
+		_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": width, "height": 844})
+		script("document.getElementById('message').value='Another follow-up';document.getElementById('message').dispatchEvent(new Event('input'))")
+		if string(script("const queue=document.getElementById('message-queue').getBoundingClientRect(),send=document.getElementById('send').getBoundingClientRect(),stop=document.getElementById('stop').getBoundingClientRect();return document.documentElement.scrollWidth<=innerWidth && queue.left>=0 && queue.right<=innerWidth && queue.top>=0 && stop.right<=send.left && send.right<=innerWidth")) != "true" {
+			t.Fatal("queue or active composer overflowed on mobile", width)
+		}
+		script("document.getElementById('message').value='';document.getElementById('message').dispatchEvent(new Event('input'))")
+		screenshot(fmt.Sprintf("queue-%d.png", width))
+	}
+	script("document.querySelector('.queue-steer').click()")
+	await("document.querySelector('.queue-steer').textContent==='Steering…' && document.querySelector('.queue-note').textContent.includes('current step')")
+	if len(a.store.Snapshot().Queue) != 2 || a.store.Snapshot().Queue[0].Status != "steering" {
+		t.Fatal("Steer did not reach the running agent")
+	}
+	script("document.querySelectorAll('.queue-remove')[1].click()")
+	await("document.querySelectorAll('.queue-row').length===1")
+	script("refresh()")
+	await("document.querySelector('.queue-steer').textContent==='Steering…'")
 	script("window.confirm=question=>{window.deleteQuestion=question;return true};[...document.querySelectorAll('.history-item')].find(b=>b.title==='UI reminder').parentElement.querySelector('.delete-chat').click()")
 	await("![...document.querySelectorAll('.history-item')].some(b=>b.title==='UI reminder') && document.getElementById('chat-feedback').textContent==='Conversation deleted.'")
 	if len(a.store.Snapshot().Schedules) != 0 {
@@ -477,7 +572,7 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	cleanupLocked = false
 	await("document.querySelectorAll('.chat-history-row').length===0 && document.getElementById('stop').hidden && !new URL(location.href).searchParams.has('chat')")
 	a.wg.Wait()
-	if st := a.store.Snapshot(); len(st.Chats) != 0 || len(st.Runs) != 0 || len(st.Schedules) != 0 {
+	if st := a.store.Snapshot(); len(st.Chats) != 0 || len(st.Runs) != 0 || len(st.Schedules) != 0 || len(st.Queue) != 0 {
 		t.Fatal("deleting the active chat left records behind")
 	}
 	script("document.getElementById('quit-app').click()")

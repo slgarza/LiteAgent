@@ -67,6 +67,7 @@ func TestModelPickerChangesOnlyModelAndPersists(t *testing.T) {
 	}
 	expected := previous
 	expected.Model = "quick"
+	expected.Reasoning, expected.Thinking = "", nil
 	reopened, err := openStore(a.dir)
 	if err != nil {
 		t.Fatal(err)

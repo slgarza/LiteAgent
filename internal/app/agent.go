@@ -184,6 +184,15 @@ func boundedConversationContext(runs []Run, chatID, resetID string, turns int) [
 			break
 		}
 		user := cut(r.Task, 2000)
+		steering := []string{}
+		for _, event := range r.Events {
+			if event.Kind == "user" {
+				steering = append(steering, event.Content)
+			}
+		}
+		for _, message := range steering[max(0, len(steering)-5):] {
+			user += "\n\nFollow-up instruction:\n" + cut(message, 1000)
+		}
 		reply := cut(r.Result, 4000)
 		if len(user)+len(reply) > budget {
 			break
@@ -241,7 +250,13 @@ func (a *App) executeRun(ctx context.Context, run Run, c Config, skills []Skill,
 			}
 			a.browser.Close()
 		}
+		a.runMu.Lock()
+		defer a.runMu.Unlock()
+		a.acceptingSteer = false
 		if err := a.store.Update(func(st *State) error {
+			if status != "completed" {
+				pauseMessages(st, "The previous reply stopped or failed. Review it before resuming this message.")
+			}
 			for i := range st.Runs {
 				if st.Runs[i].ID == run.ID {
 					st.Runs[i].Status = status
@@ -254,12 +269,11 @@ func (a *App) executeRun(ctx context.Context, run Run, c Config, skills []Skill,
 			return errors.New("task not found")
 		}); err != nil {
 			a.logError(err)
+			a.queueBlocked = true
 		}
-		a.runMu.Lock()
 		a.cancel = nil
 		a.active = ""
 		a.runDone = nil
-		a.runMu.Unlock()
 	}()
 	logEvent := func(kind, name, content string) bool {
 		if err := a.store.AddEvent(run.ID, kind, name, content); err != nil {
@@ -310,14 +324,53 @@ func (a *App) executeRun(ctx context.Context, run Run, c Config, skills []Skill,
 		if ctx.Err() != nil {
 			return
 		}
+		updates, err := a.consumeSteering(ctx, run.ID, false)
+		if err != nil {
+			result = "Could not apply steering: " + err.Error()
+			return
+		}
+		msgs = append(msgs, updates...)
 		modelCalls++
+		if !logEvent("status", "model", "Waiting for "+c.Model) {
+			return
+		}
 		msg, err := complete(ctx, c, compactMessages(msgs), definitions)
 		if err != nil {
 			result = err.Error()
 			logEvent("error", "", result)
 			return
 		}
+		updates, err = a.consumeSteering(ctx, run.ID, len(msg.ToolCalls) == 0)
+		if err != nil {
+			result = "Could not apply steering: " + err.Error()
+			return
+		}
+		if len(updates) > 0 {
+			// The model response has not executed any tools. Replace that plan
+			// with one that sees the new user instruction.
+			msgs = append(msgs, updates...)
+			continue
+		}
 		msgs = append(msgs, msg)
+		thinking := msg.Thinking
+		if thinking == "" {
+			thinking = msg.ReasoningContent
+		}
+		if thinking == "" {
+			thinking = msg.Reasoning
+		}
+		if strings.TrimSpace(thinking) != "" {
+			name := "Model reasoning"
+			if c.Provider == "openai-responses" {
+				name = "Reasoning summary"
+			}
+			if c.APIKey != "" {
+				thinking = strings.ReplaceAll(thinking, c.APIKey, "[key hidden]")
+			}
+			if !logEvent("thinking", name, thinking) {
+				return
+			}
+		}
 		if msg.Content != "" {
 			if !logEvent("assistant", "", msg.Content) {
 				return
@@ -329,9 +382,23 @@ func (a *App) executeRun(ctx context.Context, run Run, c Config, skills []Skill,
 			return
 		}
 		browserActionUsed := false
-		for _, tc := range msg.ToolCalls {
+		for callIndex, tc := range msg.ToolCalls {
 			if ctx.Err() != nil {
 				return
+			}
+			updates, err := a.consumeSteering(ctx, run.ID, false)
+			if err != nil {
+				result = "Could not apply steering: " + err.Error()
+				return
+			}
+			if len(updates) > 0 {
+				// Balance every unexecuted call before adding user content, so
+				// all provider adapters keep valid tool/result pairs.
+				for _, skipped := range msg.ToolCalls[callIndex:] {
+					msgs = append(msgs, Message{Role: "tool", ToolCallID: skipped.ID, ToolName: skipped.Function.Name, Content: "Not executed: the user updated the request. Follow the latest user instruction."})
+				}
+				msgs = append(msgs, updates...)
+				break
 			}
 			if actions >= c.MaxSteps {
 				break

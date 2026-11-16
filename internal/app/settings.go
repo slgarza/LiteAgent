@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+// Wire values accepted for explicit overrides. These are not model capabilities
+// and must never be used to populate the model picker.
 func reasoningModes(provider string) []string {
 	switch provider {
 	case "ollama":
@@ -17,7 +19,7 @@ func reasoningModes(provider string) []string {
 	case "openai", "openai-responses":
 		return []string{"auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"}
 	case "anthropic":
-		return []string{"auto", "off", "low", "medium", "high", "max"}
+		return []string{"auto", "off", "low", "medium", "high", "xhigh", "max"}
 	}
 	return []string{"auto"}
 }
@@ -55,7 +57,7 @@ func (c Config) validateGeneration() error {
 	if c.Provider == "vscode" && (c.Temperature != nil || c.MaxTokens != 0) {
 		return errors.New("the VS Code bridge uses model defaults; clear temperature and output token overrides")
 	}
-	if !slices.Contains(reasoningModes(c.Provider), c.reasoningMode()) {
+	if !(c.Provider == "ollama" && validReasoningName(c.reasoningMode())) && !slices.Contains(reasoningModes(c.Provider), c.reasoningMode()) {
 		return fmt.Errorf("reasoning for %s must be one of: %s", c.Provider, strings.Join(reasoningModes(c.Provider), ", "))
 	}
 	if c.Temperature != nil && (math.IsNaN(*c.Temperature) || math.IsInf(*c.Temperature, 0) || *c.Temperature < 0 || *c.Temperature > 2 || c.Provider == "anthropic" && *c.Temperature > 1) {
@@ -112,6 +114,12 @@ func (a *App) generation(w http.ResponseWriter, r *http.Request) {
 	if err := c.Validate(); err != nil {
 		fail(w, 400, err)
 		return
+	}
+	if _, changed := input.Settings["reasoning"]; changed {
+		if err := a.validateModelReasoning(c); err != nil {
+			fail(w, 400, err)
+			return
+		}
 	}
 	if err := a.store.Update(func(st *State) error { st.Config = c; return nil }); err != nil {
 		fail(w, 500, err)
