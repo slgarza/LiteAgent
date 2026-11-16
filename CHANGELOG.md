@@ -6,6 +6,12 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 
 ### Added
 
+- Detailed `/status` shared by the web panel and terminal: runtime/build, local/UTC time, uptime, connection/authentication type, session usage, context/cache, execution, queue and limits. No inference calls or saved credentials are used in the report.
+- Persisted per-run model request counts, elapsed time and provider-reported token/cache metrics. Missing values and older unmeasured replies are identified explicitly; incomplete responses can retain usage without executing partial calls.
+
+- Recorded action summaries in subsequent turns and a paginated `conversation_history` tool for retrieving earlier saved results within the same chat/reset boundary. Actions performed before a failed final response remain available.
+- Browser-local Show thinking setting, with collapsed panels containing only model-provided notes and an explanation of how thinking differs from action evidence.
+
 - Native reading and targeted editing of existing Excel `.xlsx`, Word `.docx` and PowerPoint `.pptx` files within the home directory. Includes paginated sections/text, Word and slide table text, worksheet values/formulas, format preservation and SHA-256 conflict checks. No Office or Python runtime is required.
 - Office package bounds, atomic batch cell updates, protected/signed document edit checks, and synthetic compatibility tests with independent readers and optional LibreOffice rendering.
 
@@ -22,7 +28,19 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 - Ollama setup guidance for unavailable servers, empty model lists and missing selected models, with a small-model download command and a link to API settings.
 - Automatic refresh of installed Ollama models while idle; the main picker no longer presents a missing default model as ready.
 
+### Fixed
+
+- Removed automatic skill injection based on overlapping words in chat. Skills preload only through explicit selection or scheduled skill runs; model instructions require a user request before skill discovery/use and avoid redundant reads.
+
+- Earlier tool results retain head/tail excerpts and saved-event references during compaction instead of losing everything after 500 characters.
+- Failed tool calls no longer consume the successful-action budget. Reaching a tool budget allows one final tool-free model summary, and skipped calls keep provider protocol pairing intact.
+
+- VS Code Bridge 0.1.1 no longer rejects complete model responses because they include thinking, data or future response parts. Visible thinking text reaches LiteAgent, plain-text/Markdown data is decoded, and opaque metadata is omitted. Stream failures still discard all partial output and tool calls.
+
 ### Changed
+
+- New configurations default to 30 successful actions per reply, plus a separate configurable ceiling of 10 failed calls. Settings exposes both limits; saved action limits are retained.
+- Explained Recent turns in context (up to 12 exchanges by default, subject to the history-size budget), saved history retrieval and thinking visibility in Settings, `/context` and the guides.
 
 - Switching models resets reasoning to Auto, preventing an effort or toggle from being carried to a model with different controls. `/reasoning` reports model capabilities instead of a generic provider list.
 

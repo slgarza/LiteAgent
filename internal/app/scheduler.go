@@ -259,6 +259,9 @@ func (a *App) applicationTool(ctx context.Context, run Run, name string, args ma
 	str := func(key string) string { v, _ := args[key].(string); return v }
 	encode := func(v any) string { raw, _ := json.Marshal(v); return string(raw) }
 	switch name {
+	case "conversation_history":
+		output, err := a.conversationHistory(ctx, run, args)
+		return output, true, err
 	case "browser_start":
 		err := a.browser.Start(ctx, a.store.Snapshot().Config)
 		return "Browser opened. The user can sign in manually.", true, err

@@ -180,7 +180,7 @@ func startLocalService(parent context.Context, address, dir string) (*localServi
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
-	app := &App{store: store, browser: &Browser{dir: dir}, dir: dir, root: ctx, shutdown: cancel}
+	app := &App{store: store, browser: &Browser{dir: dir}, dir: dir, root: ctx, shutdown: cancel, startedAt: time.Now()}
 	server := &http.Server{Addr: listener.Addr().String(), BaseContext: func(net.Listener) context.Context { return ctx }, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	s := &localService{app: app, server: server, dataLock: lock, cancel: cancel, finished: make(chan error, 1)}
 	app.wg.Add(1)

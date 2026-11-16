@@ -26,6 +26,12 @@ async function runTests() {
     };
     const first = await post();
     assert.equal(first.tool_calls[0].id, 'fixture-call');
+    if (typeof vscode.LanguageModelThinkingPart === 'function') {
+      assert.ok(events.thinking, 'fixture did not emit native thinking parts');
+      assert.equal(first.reasoning_content, 'Checking the fixture.');
+    }
+    if (typeof vscode.LanguageModelDataPart === 'function') assert.ok(events.data, 'fixture did not emit native data parts');
+    assert.ok(!JSON.stringify(first).includes('fixture-private'), 'opaque response metadata escaped the bridge');
     messages.push(first, {role: 'tool', tool_call_id: 'fixture-call', content: 'Test report text'});
     assert.equal((await post()).content, 'Read the fixture report.');
     const abort = new AbortController();
@@ -36,7 +42,7 @@ async function runTests() {
     abort.abort(); await request;
     while (!events.cancelled && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
     assert.ok(events.cancelled, 'native model cancellation was not delivered');
-    console.log('VS Code host passed: activation, native model discovery, tool round trip and cancellation. No account or live inference used.');
+    console.log('VS Code host passed: activation, native model discovery, mixed thinking/data/tool responses, tool round trip and cancellation. No account or live inference used.');
   } finally { await bridge.close(); }
 }
 async function run() {

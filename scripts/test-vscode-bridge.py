@@ -39,5 +39,5 @@ with tempfile.TemporaryDirectory(prefix='liteagent-vscode-test-') as temporary:
     if result.returncode or not (directory / 'result').is_file():
         print(result.stdout[-8000:])
         raise SystemExit('VS Code host test did not produce a success result.')
-    print('VS Code host passed: activation, native model discovery, tool round trip and cancellation; synthetic provider, no live account.')
+    print('VS Code host passed: activation, native model discovery, mixed response parts, tool round trip and cancellation; synthetic provider, no live account.')
     raise SystemExit(result.returncode)

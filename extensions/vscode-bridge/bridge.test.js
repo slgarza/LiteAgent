@@ -16,14 +16,17 @@ class CancellationTokenSource {
 class LanguageModelTextPart { constructor(value) { this.value = value; } }
 class LanguageModelToolCallPart { constructor(callId, name, input) { Object.assign(this, {callId, name, input}); } }
 class LanguageModelToolResultPart { constructor(callId, content) { Object.assign(this, {callId, content}); } }
+class LanguageModelThinkingPart { constructor(value, id, metadata) { Object.assign(this, {value, id, metadata}); } }
+class LanguageModelDataPart { constructor(data, mimeType) { Object.assign(this, {data, mimeType}); } }
 class LanguageModelChatMessage { constructor(role, content) { Object.assign(this, {role, content}); } }
-const api = {CancellationTokenSource, LanguageModelTextPart, LanguageModelToolCallPart, LanguageModelToolResultPart, LanguageModelChatMessage, LanguageModelChatMessageRole: {User: 1, Assistant: 2}, LanguageModelChatToolMode: {Auto: 1}};
+const api = {CancellationTokenSource, LanguageModelTextPart, LanguageModelToolCallPart, LanguageModelToolResultPart, LanguageModelThinkingPart, LanguageModelDataPart, LanguageModelChatMessage, LanguageModelChatMessageRole: {User: 1, Assistant: 2}, LanguageModelChatToolMode: {Auto: 1}};
 const token = 'fixture-bridge-token-no-account';
 const tools = [{type: 'function', function: {name: 'filesystem_read', description: 'Read a file', parameters: {type: 'object', properties: {path: {type: 'string'}}, required: ['path']}}}];
 function model(overrides = {}) { return {vendor: 'fixture', id: 'text-model', name: 'Fixture model', maxInputTokens: 1000, countTokens: async () => 1, sendRequest: async () => ({stream: (async function* () { yield new LanguageModelTextPart('Hello'); })()}), ...overrides}; }
 async function fixture(t, models, options = {}) {
-  const vscode = {...api, lm: {selectChatModels: async () => typeof models === 'function' ? models() : models}};
-  const bridge = await startBridge(vscode, {token, port: 0, canSend: () => true, ...options});
+  const {apiOverrides, ...bridgeOptions} = options;
+  const vscode = {...api, ...apiOverrides, lm: {selectChatModels: async () => typeof models === 'function' ? models() : models}};
+  const bridge = await startBridge(vscode, {token, port: 0, canSend: () => true, ...bridgeOptions});
   t.after(() => bridge.close());
   const request = async (path = '/models', body, headers = {}) => {
     const response = await fetch(bridge.url + path, {method: body === undefined ? 'GET' : 'POST', headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...headers}, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -108,6 +111,115 @@ test('no partial tool calls escape a broken response stream', async t => {
   const result = await request('/chat/completions', {model: modelID(selected), tools, messages: [{role: 'user', content: 'Read'}]});
   assert.equal(result.status, 502);
   assert.ok(!result.body.choices);
+});
+test('thinking and additional response parts do not discard valid text or tool calls', async t => {
+  const opaque = {signature: 'fixture-private-signature', encrypted: 'fixture-private-state', _completeThinking: 'fixture-private-metadata'};
+  const unknown = {get value() { assert.fail('unknown part was inspected as text'); }, toJSON() { assert.fail('unknown part was serialized'); }};
+  let requests = 0;
+  const selected = model({sendRequest: async messages => {
+    requests++;
+    if (requests === 2) {
+      assert.ok(!JSON.stringify(messages).includes('fixture-private'));
+      assert.ok(messages.some(m => m.content.some(p => p instanceof LanguageModelToolResultPart)));
+      return {stream: (async function* () { yield new LanguageModelTextPart('Done.'); })()};
+    }
+    return {stream: (async function* () {
+      yield new LanguageModelThinkingPart('Checking ', 'fixture-private-id', opaque);
+      yield new LanguageModelThinkingPart(['the ', 'report.']);
+      yield new LanguageModelThinkingPart('', undefined, opaque);
+      yield unknown;
+      yield new LanguageModelDataPart(Buffer.from('fixture-private-image'), 'image/png');
+      yield new LanguageModelDataPart(Buffer.from('ephemeral'), 'cache_control');
+      yield new LanguageModelTextPart('Reading ');
+      yield new LanguageModelDataPart(Buffer.from('**the report**'), 'text/markdown');
+      yield new LanguageModelDataPart(Buffer.from(' 🌎.'), 'text/plain');
+      yield new LanguageModelToolCallPart('call-1', 'filesystem_read', {path: '~/report.txt'});
+    })()};
+  }});
+  const {request} = await fixture(t, [selected]);
+  const body = {model: modelID(selected), tools, messages: [{role: 'user', content: 'Read'}]};
+  const result = await request('/chat/completions', body);
+  assert.equal(result.status, 200, JSON.stringify(result));
+  const choice = result.body.choices[0];
+  assert.equal(choice.message.content, 'Reading **the report** 🌎.');
+  assert.equal(choice.message.reasoning_content, 'Checking the report.');
+  assert.equal(choice.finish_reason, 'tool_calls');
+  assert.equal(choice.message.tool_calls[0].function.arguments, '{"path":"~/report.txt"}');
+  assert.ok(!JSON.stringify(result).includes('fixture-private'));
+  assert.equal(requests, 1, 'bridge must not retry inference');
+  body.messages.push(choice.message, {role: 'tool', tool_call_id: 'call-1', content: 'Report contents'});
+  assert.equal((await request('/chat/completions', body)).body.choices[0].message.content, 'Done.');
+});
+test('older APIs without optional part constructors still accept valid responses', async t => {
+  const selected = model({sendRequest: async () => ({stream: (async function* () {
+    yield new LanguageModelThinkingPart('not exposed by this API');
+    yield new LanguageModelDataPart(Buffer.from('metadata'), 'application/json');
+    yield {value: 'not a native text part', name: 'filesystem_read', callId: 'not-a-native-call', input: {}};
+    yield null;
+    yield new LanguageModelTextPart('OK');
+    yield new LanguageModelToolCallPart('native-call', 'filesystem_read', {});
+  })()})});
+  const {request} = await fixture(t, [selected], {apiOverrides: {LanguageModelThinkingPart: undefined, LanguageModelDataPart: undefined}});
+  const result = await request('/chat/completions', {model: modelID(selected), tools, messages: [{role: 'user', content: 'Read'}]});
+  assert.equal(result.status, 200);
+  assert.equal(result.body.choices[0].message.content, 'OK');
+  assert.equal(result.body.choices[0].message.reasoning_content, undefined);
+  assert.equal(result.body.choices[0].message.tool_calls.length, 1);
+});
+test('thinking, images or unknown data alone are not a completed answer', async t => {
+  const selected = model();
+  const {request} = await fixture(t, [selected]);
+  for (const part of [new LanguageModelThinkingPart('fixture-private-thought'), new LanguageModelDataPart(Buffer.from('fixture-private-image'), 'image/png'), {value: 'fixture-private-unknown'}]) {
+    selected.sendRequest = async () => ({stream: (async function* () { yield part; })()});
+    const result = await request('/chat/completions', {model: modelID(selected), messages: [{role: 'user', content: 'Hello'}]});
+    assert.equal(result.status, 502);
+    assert.match(result.body.error.message, /no supported answer/);
+    assert.ok(!result.body.choices);
+    assert.ok(!JSON.stringify(result).includes('fixture-private'));
+  }
+});
+test('a failure after auxiliary parts still discards every partial tool call', async t => {
+  let requests = 0;
+  const selected = model({sendRequest: async () => {
+    requests++;
+    return {stream: (async function* () {
+      yield new LanguageModelThinkingPart('A visible progress note.');
+      yield {metadata: 'fixture-private-metadata'};
+      yield new LanguageModelToolCallPart('call-1', 'filesystem_read', {});
+      yield new LanguageModelTextPart('Partial answer');
+      throw new Error('fixture-private-stream-error');
+    })()};
+  }});
+  const {request} = await fixture(t, [selected]);
+  const result = await request('/chat/completions', {model: modelID(selected), tools, messages: [{role: 'user', content: 'Read'}]});
+  assert.equal(result.status, 502);
+  assert.ok(!result.body.choices);
+  assert.ok(!JSON.stringify(result).includes('fixture-private'));
+  assert.equal(requests, 1);
+});
+test('mixed responses retain size limits and text/tool validation', async t => {
+  const selected = model();
+  const {request} = await fixture(t, [selected]);
+  const parts = [
+    new LanguageModelThinkingPart('x'.repeat(2 * 1024 * 1024 + 1)),
+    new LanguageModelDataPart(new Uint8Array(2 * 1024 * 1024 + 1), 'image/png'),
+    new LanguageModelDataPart(new Uint8Array([0xff]), 'text/plain'),
+    new LanguageModelDataPart('invalid data', 'text/plain'),
+    new LanguageModelThinkingPart(['valid', 42]),
+    new LanguageModelTextPart({value: 'invalid text'}),
+    new LanguageModelToolCallPart('bad', 'unregistered_tool', {}),
+    new LanguageModelToolCallPart('bad', 'filesystem_read', [])
+  ];
+  for (const part of parts) {
+    selected.sendRequest = async () => ({stream: (async function* () { yield new LanguageModelTextPart('Partial'); yield part; })()});
+    const result = await request('/chat/completions', {model: modelID(selected), tools, messages: [{role: 'user', content: 'Read'}]});
+    assert.equal(result.status, 502);
+    assert.ok(!result.body.choices);
+  }
+  selected.sendRequest = async () => ({stream: (async function* () { for (let i = 0; i < 65537; i++) yield {}; })()});
+  const result = await request('/chat/completions', {model: modelID(selected), messages: [{role: 'user', content: 'Read'}]});
+  assert.equal(result.status, 502);
+  assert.match(result.body.error.message, /part limit/);
 });
 test('inconsistent tool history is rejected', () => {
   const body = {model: 'fixture/text-model', messages: [{role: 'assistant', tool_calls: [{id: 'x', type: 'function', function: {name: 'test', arguments: '{}'}}]}]};

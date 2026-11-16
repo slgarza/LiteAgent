@@ -116,9 +116,10 @@
     <div id="palette-list" role="listbox" aria-label="Available commands"></div>
     <p class="muted palette-hint">↑ ↓ to browse · Enter to choose · Esc to close</p>
   </dialog>
-  <dialog id="status-dialog" class="glass-dialog" aria-labelledby="status-title">
+  <dialog id="status-dialog" class="glass-dialog status-dialog" aria-labelledby="status-title">
     <div class="dialog-heading"><h2 id="status-title">Workspace status</h2><button type="button" data-close="status-dialog" aria-label="Close status">×</button></div>
-    <div id="status-content"></div>
+    <p class="muted status-caption">Live snapshot of this workspace and selected chat. Token counts appear only when reported by the provider.</p>
+    <div id="status-content" aria-live="off"></div>
   </dialog>
   <dialog id="settings-dialog" class="glass-dialog settings-dialog" aria-labelledby="settings-title">
     <div class="dialog-heading"><div><p class="eyebrow">YOUR WORKSPACE</p><h2 id="settings-title">Settings</h2></div><button type="button" data-close="settings-dialog" aria-label="Close settings">×</button></div>
@@ -140,11 +141,14 @@
         <label>Temperature<input id="setting-temperature" type="number" min="0" max="2" step="0.05" placeholder="Auto"></label>
         <label>Output token limit<input id="setting-max_tokens" type="number" min="0" max="131072" placeholder="Auto"></label>
         <label>Ollama context tokens<input id="setting-context_tokens" type="number" min="2048" max="262144" placeholder="16384"></label>
-        <label>Recent turns in context<input id="setting-history_turns" type="number" min="1" max="100" placeholder="12"></label>
+        <label>Recent turns in context<input id="setting-history_turns" type="number" min="1" max="100" placeholder="12" aria-describedby="history-turns-help"><small id="history-turns-help" class="muted">Maximum recent request/reply exchanges sent to the model (default: 12), including action summaries. This does not delete history.</small></label>
         <label>Request timeout (seconds)<input id="setting-timeout_sec" type="number" required min="10" max="86400" placeholder="900" aria-describedby="request-timeout-help"><small id="request-timeout-help" class="muted">Per model request. Default: 900 seconds (15 minutes).</small></label>
         <label>Run timeout (seconds)<input id="setting-run_timeout_sec" type="number" min="10" max="86400" placeholder="1800" aria-describedby="run-timeout-help"><small id="run-timeout-help" class="muted">Total time for the reply and its actions. Default: 1800 seconds (30 minutes).</small></label>
-        <label>Action limit<input id="setting-max_steps" type="number" required min="1" max="50"></label>
+        <label>Successful action limit<input id="setting-max_steps" type="number" required min="1" max="50" placeholder="30" aria-describedby="action-limit-help"><small id="action-limit-help" class="muted">Completed tool calls per reply (default: 30). Failed calls count toward the separate failure limit.</small></label>
+        <label>Tool failure limit<input id="setting-max_tool_failures" type="number" min="1" max="50" placeholder="10" aria-describedby="failure-limit-help"><small id="failure-limit-help" class="muted">Separate stop after this many failed calls (default: 10). Uncertain remote failures can stop sooner.</small></label>
       </div>
+      <label class="check-label"><input id="setting-show-thinking" type="checkbox" aria-describedby="show-thinking-help">Show thinking panels</label>
+      <p id="show-thinking-help" class="muted">Display preference for this browser only. Panels start collapsed. Showing or hiding them does not change what the model receives.</p>
       <label>Custom instructions<textarea id="setting-system_prompt" rows="3" maxlength="12000" placeholder="Language, response style, or your working preferences"></textarea></label>
       <p id="settings-feedback" class="feedback" role="status"></p>
       <div class="dialog-actions"><button type="submit" id="save-settings" class="primary">Save settings</button></div>

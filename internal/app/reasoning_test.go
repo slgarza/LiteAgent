@@ -201,6 +201,7 @@ func TestAgentRecordsOnlyVisibleModelReasoning(t *testing.T) {
 	for _, test := range []struct{ provider, response, visible string }{
 		{"ollama", `{"message":{"thinking":"Model plan: verify the fixture.","content":"Done."}}`, "Model plan: verify the fixture."},
 		{"openai", `{"choices":[{"message":{"reasoning_content":"Check the supplied totals.","content":"Done."}}]}`, "Check the supplied totals."},
+		{"vscode", `{"choices":[{"message":{"reasoning_content":"Check the fixture report.","content":"Done."}}]}`, "Check the fixture report."},
 		{"openai", `{"choices":[{"message":{"reasoning":"Read the fixture.","content":"Done."}}]}`, "Read the fixture."},
 		{"anthropic", `{"content":[{"type":"thinking","thinking":"Compare the fixture dates.","signature":"private-signature"},{"type":"redacted_thinking","data":"private-redaction"},{"type":"text","text":"Done."}]}`, "Compare the fixture dates."},
 		{"openai-responses", `{"status":"completed","output":[{"type":"reasoning","encrypted_content":"private-encrypted","summary":[{"type":"summary_text","text":"Verified the supplied data."}]},{"type":"message","content":[{"type":"output_text","text":"Done."}]}]}`, "Verified the supplied data."},

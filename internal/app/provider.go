@@ -22,6 +22,9 @@ type ToolCall struct {
 	Function FunctionCall `json:"function"`
 }
 type Message struct {
+	Usage            TokenUsage       `json:"-"`
+	HistoryRunID     string           `json:"-"`
+	HistoryEvent     int              `json:"-"`
 	Thinking         string           `json:"thinking,omitempty"`
 	ReasoningContent string           `json:"reasoning_content,omitempty"`
 	Reasoning        string           `json:"reasoning,omitempty"`
@@ -85,6 +88,7 @@ func jsonRequest(ctx context.Context, c Config, method, path string, body any, o
 		}
 		return fmt.Errorf("provider HTTP %d: %s", resp.StatusCode, cut(detail, 700))
 	}
+	captureUsage(ctx, c.Provider, b)
 	if err = json.Unmarshal(b, out); err != nil {
 		return fmt.Errorf("invalid provider response: %w", err)
 	}
@@ -111,6 +115,13 @@ func modelRequestError(ctx context.Context, c Config, err error) error {
 }
 
 func complete(ctx context.Context, c Config, msgs []Message, defs []ToolDef) (Message, error) {
+	capture := &usageCapture{}
+	m, err := completeModel(context.WithValue(ctx, usageContextKey{}, capture), c, msgs, defs)
+	m.Usage = capture.usage
+	return m, err
+}
+
+func completeModel(ctx context.Context, c Config, msgs []Message, defs []ToolDef) (Message, error) {
 	if c.Provider == "openai-responses" {
 		return completeResponses(ctx, c, msgs, defs)
 	}

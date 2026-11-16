@@ -40,9 +40,9 @@ func TestWorkspaceUI(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&request)
 			last := request.Input[len(request.Input)-1]
 			if last["type"] != "function_call_output" {
-				fmt.Fprint(w, `{"status":"completed","output":[{"type":"reasoning","encrypted_content":"fixture-private-context","summary":[{"type":"summary_text","text":"I’ll check the available reporting procedure, then identify what needs to be verified before summarizing the report."}]},{"type":"function_call","call_id":"fixture-skills","name":"skills_list","arguments":"{}"}]}`)
+				fmt.Fprint(w, `{"status":"completed","usage":{"input_tokens":2400,"output_tokens":180,"input_tokens_details":{"cached_tokens":1200},"output_tokens_details":{"reasoning_tokens":40}},"output":[{"type":"reasoning","encrypted_content":"fixture-private-context","summary":[{"type":"summary_text","text":"I’ll check the available reporting procedure, then identify what needs to be verified before summarizing the report."}]},{"type":"function_call","call_id":"fixture-skills","name":"skills_list","arguments":"{}"}]}`)
 			} else {
-				fmt.Fprint(w, `{"status":"completed","output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"The procedure calls for checking the reporting period. I have the checklist ready; the report itself is still needed to verify its figures."}]},{"type":"message","content":[{"type":"output_text","text":"The reporting checklist is ready.\n\n- Confirm the reporting period.\n- Compare the totals with the source data.\n- Highlight changes and anything that needs follow-up.\n\nShare the report when you’re ready, and I’ll apply these checks."}]}]}`)
+				fmt.Fprint(w, `{"status":"completed","usage":{"input_tokens":2800,"output_tokens":220,"input_tokens_details":{"cached_tokens":1400}},"output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"The procedure calls for checking the reporting period. I have the checklist ready; the report itself is still needed to verify its figures."}]},{"type":"message","content":[{"type":"output_text","text":"The reporting checklist is ready.\n\n- Confirm the reporting period.\n- Compare the totals with the source data.\n- Highlight changes and anything that needs follow-up.\n\nShare the report when you’re ready, and I’ll apply these checks."}]}]}`)
 			}
 		case "/api/chat":
 			_, _ = io.Copy(io.Discard, r.Body)
@@ -166,13 +166,19 @@ func TestWorkspaceUI(t *testing.T) {
 	if string(script("return document.getElementById('setting-timeout_sec').value")) != `"900"` {
 		t.Fatal("settings did not show the default 900-second request timeout")
 	}
-	script("document.getElementById('setting-temperature').value='0.3';document.getElementById('setting-timeout_sec').value='1200';document.getElementById('settings-form').requestSubmit()")
+	if string(script("return document.getElementById('setting-max_steps').value==='30' && document.getElementById('setting-max_tool_failures').value==='10' && document.getElementById('history-turns-help').textContent.includes('does not delete history') && document.getElementById('setting-show-thinking').checked")) != "true" {
+		t.Fatal("run settings did not explain history or show the new defaults")
+	}
+	script("document.getElementById('setting-temperature').value='0.3';document.getElementById('setting-timeout_sec').value='1200';document.getElementById('setting-max_steps').value='31';document.getElementById('setting-max_tool_failures').value='4';document.getElementById('settings-form').requestSubmit()")
 	await("!document.getElementById('settings-dialog').open")
 	if value := a.store.Snapshot().Config.Temperature; value == nil || *value != 0.3 {
 		t.Fatal("settings were not saved")
 	}
 	if a.store.Snapshot().Config.TimeoutSec != 1200 {
 		t.Fatal("settings did not save a request timeout above 600 seconds")
+	}
+	if c := a.store.Snapshot().Config; c.MaxSteps != 31 || c.MaxToolFailures != 4 {
+		t.Fatal("settings did not persist separate action/failure budgets")
 	}
 	script("document.getElementById('show-settings').click()")
 	await("document.getElementById('settings-dialog').open && document.getElementById('setting-timeout_sec').value==='1200'")
@@ -196,7 +202,7 @@ func TestWorkspaceUI(t *testing.T) {
 	script("document.getElementById('message').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}))")
 	await("document.getElementById('message').value==='/status '")
 	script("document.getElementById('chat-form').requestSubmit()")
-	await("document.getElementById('status-dialog').open")
+	await("document.getElementById('status-dialog').open && document.querySelectorAll('#status-content .status-section').length===6")
 	if len(a.store.Snapshot().Runs) != 0 {
 		t.Fatal("UI-only commands were sent as messages")
 	}
@@ -343,6 +349,17 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	}
 	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
 	screenshot("notifications-desktop.png")
+	script("document.querySelector('[data-settings-tab=generation]').click();document.getElementById('setting-max_steps').value='30';document.getElementById('setting-max_tool_failures').value='10';document.getElementById('settings-form').requestSubmit()")
+	await("!document.getElementById('settings-dialog').open")
+	script("document.getElementById('show-settings').click();document.querySelector('[data-settings-tab=generation]').click()")
+	screenshot("run-settings-desktop.png")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 390, "height": 844})
+	script("document.getElementById('setting-max_steps').scrollIntoView({block:'center'})")
+	if string(script("return document.documentElement.scrollWidth<=innerWidth && document.getElementById('settings-dialog').scrollWidth<=document.getElementById('settings-dialog').clientWidth")) != "true" {
+		t.Fatal("run settings overflow on mobile")
+	}
+	screenshot("run-settings-mobile.png")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
 	script("document.getElementById('settings-dialog').close()")
 	localConfig := a.store.Snapshot().Config
 	if w := callAPI(t, a, "POST", "/api/connections/"+saved[1].ID, map[string]string{"action": "activate"}, nil); w.Code != 200 {
@@ -350,7 +367,7 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	}
 	script("refresh()")
 	await("document.getElementById('composer-model').textContent==='test-agent' && !document.getElementById('refresh-models').disabled")
-	fixture := waitRun(t, a, postChat(t, a, "", "Prepare a checklist for reviewing the weekly report.").ID)
+	fixture := waitRun(t, a, postChat(t, a, "", "Use the reporting skill to prepare a weekly review checklist.").ID)
 	a.wg.Wait()
 	if fixture.Status != "completed" {
 		t.Fatal("thinking fixture failed")
@@ -361,7 +378,24 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	if string(script("return !document.querySelector('.thinking-trace').open && !document.querySelector('.action-trace').textContent.includes('Reasoning summary') && !document.body.innerText.includes('fixture-private-context')")) != "true" {
 		t.Fatal("thinking was expanded by default, duplicated in actions, or exposed opaque data")
 	}
+	await("document.querySelector('.thinking-trace summary').textContent.includes('Show thinking')")
+	beforeDisplayChange, _ := json.Marshal(a.store.Snapshot().Config)
+	script("document.getElementById('show-settings').click();document.querySelector('[data-settings-tab=generation]').click();document.getElementById('setting-show-thinking').click();document.getElementById('settings-dialog').close()")
+	await("!document.querySelector('.thinking-trace') && document.querySelector('.action-trace') && localStorage.getItem('liteagent.showThinking')==='false'")
+	if _, err := browser.Tool(ctx, "browser_open", map[string]any{"url": server.URL + "?chat=" + fixture.ChatID}); err != nil {
+		t.Fatal(err)
+	}
+	await("document.querySelector('.action-trace') && !document.querySelector('.thinking-trace')")
+	script("document.getElementById('show-settings').click();document.querySelector('[data-settings-tab=generation]').click();document.getElementById('setting-show-thinking').click();document.getElementById('settings-dialog').close()")
+	await("document.querySelector('.thinking-trace summary').textContent.includes('Show thinking')")
+	afterDisplayChange, _ := json.Marshal(a.store.Snapshot().Config)
+	if string(beforeDisplayChange) != string(afterDisplayChange) {
+		t.Fatal("display-only thinking preference changed model configuration")
+	}
+	// The reload above resets browser test instrumentation.
+	script("window.uiErrors=[];window.addEventListener('error',e=>uiErrors.push(e.message));window.addEventListener('unhandledrejection',e=>uiErrors.push(String(e.reason)))")
 	script("document.querySelector('.thinking-trace summary').click();document.querySelector('.action-trace summary').click()")
+	await("document.querySelector('.thinking-trace summary').textContent.startsWith('Thinking')")
 	if err := a.store.Update(func(st *State) error {
 		for i := range st.Runs {
 			if st.Runs[i].ID == fixture.ID {
@@ -380,7 +414,26 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 	if string(script(`const base={status:'completed',model:'fixture',events:[]};const unsafe=thinkingTrace({...base,events:[{kind:'thinking',time:new Date().toISOString(),content:'<img src=x onerror=alert(1)>'}]});return thinkingTrace(base)===null && unsafe.querySelector('img')===null && unsafe.textContent.includes('<img')`)) != "true" {
 		t.Fatal("reasoning rendered HTML or fabricated a note")
 	}
+	script("openCommandUI('/status')")
+	await("document.getElementById('status-content').textContent.includes('5200 in / 400 out') && document.getElementById('status-content').textContent.includes('50.0% hit')")
+	if string(script("return !document.getElementById('status-content').textContent.includes('ui-secret') && document.querySelectorAll('#status-content img').length===0")) != "true" {
+		t.Fatal("status exposed a credential or rendered untrusted HTML")
+	}
+	screenshot("status-desktop.png")
+	for _, width := range []int{390, 320} {
+		_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": width, "height": 844})
+		if string(script("return document.documentElement.scrollWidth<=innerWidth && document.getElementById('status-dialog').scrollWidth<=document.getElementById('status-dialog').clientWidth")) != "true" {
+			t.Fatal("status dialog overflows on mobile", width)
+		}
+		screenshot(fmt.Sprintf("status-%d.png", width))
+	}
+	script("document.getElementById('status-dialog').close()")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
 	screenshot("thinking-desktop.png")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 390, "height": 844})
+	script("document.querySelector('.thinking-trace').scrollIntoView({block:'start'})")
+	screenshot("thinking-mobile.png")
+	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
 	script("document.querySelector('.action-trace summary').click()")
 	screenshot("composer-desktop.png")
 	script("document.getElementById('model-menu-toggle').click()")
@@ -476,7 +529,7 @@ notificationAudio=null;document.querySelector('[data-settings-tab=notifications]
 		t.Fatal("an unavailable Ollama model was presented as usable")
 	}
 	script("document.getElementById('message').value='/status';document.getElementById('chat-form').requestSubmit()")
-	await("document.getElementById('status-dialog').open")
+	await("document.getElementById('status-dialog').open && document.querySelectorAll('#status-content .status-section').length===6")
 	script("document.getElementById('status-dialog').close()")
 	_, _ = browser.command(ctx, "POST", "/session/"+browser.session+"/window/rect", map[string]int{"width": 1440, "height": 1000})
 	screenshot("ollama-setup-desktop.png")

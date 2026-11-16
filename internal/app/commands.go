@@ -67,7 +67,7 @@ const commandHelp = `You can chat normally and ask me to use the browser, create
 - /config — view settings and how to change them
 - /models — list models from your provider
 - /model MODEL — switch models
-- /status — model, current activity and local time
+- /status — runtime, session, usage, context, execution and queue
 - /skills — list installed skills
 - /schedules — list reminders and scheduled skills
 - /stop — stop the current reply
@@ -182,23 +182,7 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 		a.wizards[chatID] = &onboarding{Config: c}
 		reply = "Let's connect your model. Which provider? Reply **ollama**, **openai**, **openai-responses**, **anthropic**, or **vscode**. You can send `/cancel` at any point."
 	case "/status":
-		activity := "idle"
-		if a.active != "" {
-			activity = "working"
-		}
-		loc, err := time.LoadLocation(c.Timezone)
-		if err != nil {
-			loc = time.UTC
-		}
-		st := a.store.Snapshot()
-		activeSchedules := 0
-		for _, s := range st.Schedules {
-			if s.Enabled {
-				activeSchedules++
-			}
-		}
-		reply = fmt.Sprintf("**LiteAgent is %s.**\n\n- Provider: %s\n- Model: `%s`\n- Skills: %d\n- Active schedules: %d\n- Local time: %s (%s)\n\nUse /models to check provider connectivity.", activity, c.Provider, c.Model, len(st.Skills), activeSchedules, time.Now().In(loc).Format("2006-01-02 15:04"), c.Timezone)
-		reply += fmt.Sprintf("\n\nReasoning: %s · history: %d turns · action limit: %d · run timeout: %ds\nActive run: `%s`", c.reasoningMode(), c.historyTurns(), c.MaxSteps, c.runTimeout(), a.active)
+		reply = workspaceStatus(a.store.Snapshot(), chatID, a.active, a.acceptingSteer, a.queueBlocked, a.startedAt, time.Now()).text()
 	case "/reasoning":
 		if argument == "" {
 			reply = a.reasoningReply(c)
@@ -243,7 +227,7 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 		for _, m := range history {
 			chars += len(m.Content)
 		}
-		reply = fmt.Sprintf("Context: %d recent turns, %d bytes. Configured history: %d turns. /reset starts fresh without deleting history or schedules.", len(history)/2, chars, c.historyTurns())
+		reply = fmt.Sprintf("Automatic context: %d recent turns, %d bytes, including recorded action summaries. Configured maximum: %d turns, subject to the history size budget. One turn is one user request and assistant reply. Older saved actions can be consulted with conversation_history. Thinking display does not change context. /reset starts fresh without deleting saved history or schedules.", len(history)/2, chars, c.historyTurns())
 	case "/retry":
 		for _, previous := range a.store.Snapshot().Runs {
 			if previous.ChatID != chatID || previous.Origin != "user" {
@@ -334,7 +318,7 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 		reply = a.saveCommandConfig(c)
 	case "/config":
 		if argument == "" {
-			reply = fmt.Sprintf("**Current settings**\n\nProvider: %s\nURL: `%s`\nModel: `%s`\nTime zone: `%s`\nRequest timeout: %d seconds\n\nChange one setting with:\n- `/config provider ollama`\n- `/config url http://127.0.0.1:11434`\n- `/config model qwen3:8b`\n- `/config key YOUR_KEY` (hidden from history)\n- `/config timezone America/Mexico_City`\n- `/config headless true`\n- `/config max_steps 20`\n- `/config timeout 900`\n- `/config thinking false` (Ollama; true or auto also supported)\n- `/config browser_path PATH`\n- `/config driver_path PATH`\n\nOr use /onboard for guided setup.", c.Provider, c.BaseURL, c.Model, c.Timezone, c.TimeoutSec)
+			reply = fmt.Sprintf("**Current settings**\n\nProvider: %s\nURL: `%s`\nModel: `%s`\nTime zone: `%s`\nRequest timeout: %d seconds\n\nChange one setting with:\n- `/config provider ollama`\n- `/config url http://127.0.0.1:11434`\n- `/config model qwen3:8b`\n- `/config key YOUR_KEY` (hidden from history)\n- `/config timezone America/Mexico_City`\n- `/config headless true`\n- `/config max_steps 30`\n- `/config max_tool_failures 10`\n- `/config timeout 900`\n- `/config thinking false` (Ollama; true or auto also supported)\n- `/config browser_path PATH`\n- `/config driver_path PATH`\n\nOr use /onboard for guided setup.", c.Provider, c.BaseURL, c.Model, c.Timezone, c.TimeoutSec)
 			reply += fmt.Sprintf("\n\nReasoning: %s; max_tokens: %d; context_tokens: %d; history_turns: %d; run_timeout: %ds.\n\nAlso: `/reasoning MODE`, `/config temperature auto`, `/config max_tokens 4096`, `/config context_tokens 16384`, `/config history_turns 12`, `/config run_timeout 1800`, `/config system_prompt TEXT` (or clear). Zero restores default for numeric generation settings.", c.reasoningMode(), c.MaxTokens, c.contextTokens(), c.historyTurns(), c.runTimeout())
 			break
 		}
@@ -378,6 +362,8 @@ func (a *App) command(ctx context.Context, input ChatRequest) (Run, error) {
 			c.Headless, err = strconv.ParseBool(value)
 		case "max_steps":
 			c.MaxSteps, err = strconv.Atoi(value)
+		case "max_tool_failures":
+			c.MaxToolFailures, err = strconv.Atoi(value)
 		case "timeout":
 			c.TimeoutSec, err = strconv.Atoi(value)
 		case "thinking":

@@ -20,6 +20,7 @@ import (
 )
 
 type App struct {
+	startedAt        time.Time
 	store            *Store
 	browser          *Browser
 	dir              string
@@ -81,6 +82,7 @@ func (a *App) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/shutdown", a.shutdownServer)
 	mux.HandleFunc("GET /api/state", a.state)
+	mux.HandleFunc("GET /api/status", a.statusAPI)
 	mux.HandleFunc("PUT /api/config", a.config)
 	mux.HandleFunc("PATCH /api/generation", a.generation)
 	mux.HandleFunc("PUT /api/connections", a.connectionsAPI)
@@ -454,7 +456,7 @@ func (a *App) beginRun(input ChatRequest, origin string, claim func(*State) erro
 	if err := st.Config.Validate(); err != nil {
 		return Run{}, err
 	}
-	skills, err := selectedSkills(st, input.Task, input.SkillIDs)
+	skills, err := selectedSkills(st, input.SkillIDs)
 	if err != nil {
 		return Run{}, err
 	}
@@ -467,6 +469,10 @@ func (a *App) beginRun(input ChatRequest, origin string, claim func(*State) erro
 		chatID = newID()
 	}
 	run := Run{ID: newID(), RequestID: a.requestID, RequestHash: a.requestHash, ScheduleID: input.ScheduleID, ScheduledFor: input.ScheduledFor, Reasoning: st.Config.reasoningMode(), ChatID: chatID, Origin: origin, Task: input.Task, Status: "running", CreatedAt: now(), Model: st.Config.Model, SkillIDs: ids, Events: []Event{}}
+	run.Provider = st.Config.Provider
+	if st.Config.Provider == "ollama" {
+		run.ContextLimit = st.Config.contextTokens()
+	}
 	if input.QueueID != "" {
 		found := false
 		for _, item := range st.Queue {

@@ -270,7 +270,7 @@ func TestCLIUsesSharedChatAndCommands(t *testing.T) {
 	if err := chatCLI(context.Background(), server.URL, "", input, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Settings saved.", "LiteAgent is idle", "No skills installed"} {
+	for _, want := range []string{"Settings saved.", "Activity: idle", "No skills installed"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatal("CLI did not show " + want)
 		}

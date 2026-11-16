@@ -10,14 +10,16 @@ A local assistant with a web chat, browser automation, text and Office file tool
 
 - Ollama, OpenAI-compatible APIs, OpenAI Responses and Anthropic.
 - VS Code as a model provider through the optional local bridge extension.
-- Model and reasoning controls in the message composer.
+- Model and reasoning controls in the message composer, with optional collapsible model-provided thinking.
 - Automatic discovery of installed Ollama models and first-run setup guidance.
 - Windows production executable without a console; Quit from the interface.
 - Chrome automation and local text-file inspection, creation and editing.
 - Reading and editing existing Excel, Word and PowerPoint documents, without an Office runtime.
-- Saved procedures, cron jobs, reminders and notification sounds.
+- Saved procedures used on request, cron jobs, reminders and notification sounds.
+- Detailed session status with provider-reported tokens, cache, context, execution and queue information.
 - Settings for connections, timeouts, notifications, schedules, skills and MCP servers.
-- Persistent local conversations, including deletion while a reply is running.
+- Persistent local conversations and retrievable action records, including after failed replies.
+- Configurable limits: 30 successful actions per reply by default, with failures counted separately.
 
 ## What do I need to run it?
 

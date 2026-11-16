@@ -47,7 +47,7 @@ func (a *App) enqueueMessage(input ChatRequest) (QueuedMessage, error) {
 	if count >= 20 {
 		return QueuedMessage{}, errors.New("the queue is full (20 messages); remove or finish a message first")
 	}
-	if _, err := selectedSkills(st, input.Task, input.SkillIDs); err != nil {
+	if _, err := selectedSkills(st, input.SkillIDs); err != nil {
 		return QueuedMessage{}, err
 	}
 	item := QueuedMessage{ID: newID(), RequestID: a.requestID, RequestHash: a.requestHash, ChatID: input.ChatID, Message: strings.TrimSpace(input.Task), SkillIDs: input.SkillIDs, CreatedAt: now(), Status: "queued"}

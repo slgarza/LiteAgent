@@ -21,7 +21,7 @@ python3 scripts/build-vscode-bridge.py
 
 On Windows, use `py scripts/build-vscode-bridge.py`. Packaging needs Python and Node.js 22+ with npm. The script downloads a pinned version of Microsoft's VS Code packaging tool and creates **`dist/LiteAgent-vscode-bridge.vsix`**. This generated file is local and excluded from Git; no Marketplace or GitHub binary release is published.
 
-In desktop VS Code 1.104 or newer, open **Extensions → … → Install from VSIX** and choose that file. Rebuild/restart LiteAgent as described in the [README](../README.md#run-from-github-source) to see its new provider option.
+In desktop VS Code 1.104 or newer, open **Extensions → … → Install from VSIX** and choose that file. The current bridge version is **0.1.1**. When replacing an older version, stop the bridge, install the new VSIX, run **Developer: Reload Window**, then run **LiteAgent: Start Model Bridge** again. The saved bridge token is retained; no rotation is needed for an upgrade. Rebuild/restart LiteAgent as described in the [README](../README.md#run-from-github-source) to see its new provider option.
 
 ## Connect
 
@@ -47,6 +47,7 @@ The token is for the local bridge, not a remote provider key. Credentials saved 
 | Model removed / 404 | Fetch models again and choose an available ID. |
 | Blocked / 429 | Check provider access and quota in VS Code. The bridge does not bypass limits. |
 | Tool request rejected | Choose a model that supports the tools LiteAgent sends. A successful text test does not establish tool support. |
+| `unsupported response part` / bridge 502 from version 0.1.0 | Install bridge 0.1.1, reload the VS Code window and restart the bridge. This fixes rejection of otherwise valid replies that also contain thinking/data parts. |
 | Context too large | Start a new chat or reduce LiteAgent's history/context. |
 | Timeout | Check both LiteAgent's request/run deadline and VS Code's **LiteAgent Bridge: Timeout Seconds**. The bridge defaults to 900 seconds. |
 
@@ -54,9 +55,9 @@ The bridge stays local to the desktop computer running VS Code, including when a
 
 ## Supported behavior
 
-Text messages, function-call definitions, tool calls/results and Stop cancellation are translated through VS Code's public API. LiteAgent executes the tools. Responses are returned only after the model finishes; a broken response stream never returns partial tool calls for execution. No request is retried automatically by the bridge.
+Text messages, function-call definitions, tool calls/results and Stop cancellation are translated through VS Code's public API. When the installed VS Code exposes native thinking parts, their visible text is forwarded as `reasoning_content` for LiteAgent’s Thinking history. Signatures, IDs, encrypted state and other thinking metadata are never included. Native data parts with exact `text/plain` or `text/markdown` MIME types are decoded as UTF-8; other data and unknown future part types are ignored without aborting supported text/tool output. The bridge requires answer text or tool calls, so a response containing only thinking or unsupported data is still an error. LiteAgent executes the tools. Responses are returned only after the model finishes; a broken response stream never returns partial tool calls for execution. No request is retried automatically by the bridge.
 
-The public consumer API provides user and assistant roles, so system instructions are placed at the start of user-message content. This changes their priority. The bridge uses model defaults for reasoning, temperature and output tokens. Images, structured output and arbitrary provider options are unsupported. It enforces context checks, 2 MiB request/response bounds and a maximum of eight simultaneous bridge requests.
+The public consumer API provides user and assistant roles, so system instructions are placed at the start of user-message content. This changes their priority. The bridge uses model defaults for reasoning, temperature and output tokens. Images, structured output and arbitrary provider options are unsupported. It enforces context checks, 2 MiB request/response bounds, at most 65,536 streamed parts per response and a maximum of eight simultaneous bridge requests. Visible thinking and native data bytes count toward the response budget. Malformed text/data and invalid tool calls fail the entire response.
 
 Use **LiteAgent: Stop Model Bridge** or the status bar to stop it. **LiteAgent: Rotate Bridge Token** stops it and invalidates the previous token; copy the replacement to LiteAgent before restarting. Tokens are stored using VS Code SecretStorage. The extension forwards the context you send, without reading other chats/workspace files or recording prompts/responses. Provider data handling still applies.
 

@@ -1,5 +1,6 @@
 'use strict';
 let managementSignature = '', paletteIndex = 0, paletteMatches = [];
+let statusLoading = false;
 let connectionModels = [], connectionModelRequest = 0, connectionModelAbort = null, connectionModelTimer = null, connectionManualModel = false;
 function selectSettingsTab(tab) {
   for (const button of document.querySelectorAll('[data-settings-tab]')) {
@@ -19,7 +20,7 @@ function openCommandUI(command) {
   if (command === '/notifications') { showSettings('notifications'); return true; }
   if (command === '/models' || command === '/onboard') { showSettings('connections'); return true; }
   if (['/cron', '/crons', '/schedules'].includes(command)) { $('show-schedules').click(); return true; }
-  if (command === '/status') { renderStatus(); $('status-dialog').showModal(); return true; }
+  if (command === '/status') { $('status-content').replaceChildren(el('p', 'Loading status…', 'muted')); $('status-dialog').showModal(); renderStatus(); return true; }
   return false;
 }
 function openPalette() {
@@ -47,17 +48,30 @@ function choosePalette(index) {
   if (name === '/new') { selectChat(null); return; }
   $('message').value = name + ' '; renderCommands(); updateControls(); $('message').focus();
 }
-function renderStatus() {
-  if (!state) return;
-  const values = [
-    ['Activity', state.active ? 'Running · ' + state.active : 'Idle'], ['Provider', state.config.provider],
-    ['Model', state.config.model], ['Reasoning', currentReasoning()], ['Skills', String(state.skills.length)],
-    ['MCP servers', String((state.mcp_servers || []).filter(s => s.enabled).length) + ' enabled'],
-    ['Schedules', String((state.schedules || []).filter(s => s.enabled).length) + ' active'], ['Time zone', state.config.timezone],
-  ];
-  $('status-content').replaceChildren(...values.map(([label, value]) => {
-    const row = el('div', undefined, 'status-row'); row.append(el('span', label), el('strong', value)); return row;
-  }));
+async function renderStatus() {
+  if (!state || !$('status-dialog').open || statusLoading) return;
+  const source = chatID || 'new';
+  statusLoading = true;
+  try {
+    const report = await api('status?chat_id=' + encodeURIComponent(source));
+    if (!$('status-dialog').open || source !== (chatID || 'new')) return;
+    $('status-title').textContent = report.title;
+    const sections = report.sections.map(section => {
+      const block = el('section', undefined, 'status-section');
+      block.append(el('h3', section.title));
+      const list = el('dl');
+      for (const row of section.rows) {
+        const item = el('div', undefined, 'status-row');
+        item.append(el('dt', row.label), el('dd', row.value));
+        list.append(item);
+      }
+      block.append(list);
+      return block;
+    });
+    $('status-content').replaceChildren(...sections);
+  } catch (error) {
+    if ($('status-dialog').open && source === (chatID || 'new')) $('status-content').replaceChildren(el('p', 'Could not refresh status: ' + error.message, 'feedback error'));
+  } finally { statusLoading = false; }
 }
 function managementCard(name, description, badge) {
   const card = el('article', undefined, 'management-card');

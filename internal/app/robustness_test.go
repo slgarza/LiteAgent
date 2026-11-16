@@ -94,16 +94,16 @@ func TestGenerationPatchValidatesAndPreservesCredentials(t *testing.T) {
 	a := newTestApp(t)
 	_ = a.store.Update(func(st *State) error { st.Config.APIKey = "preserved-secret"; return nil })
 	before := a.store.Snapshot().Config
-	input := map[string]any{"provider": before.Provider, "base_url": before.BaseURL, "model": before.Model, "settings": map[string]any{"reasoning": "off", "temperature": 0.0, "history_turns": 8, "timeout_sec": 1200, "run_timeout_sec": 1800}}
+	input := map[string]any{"provider": before.Provider, "base_url": before.BaseURL, "model": before.Model, "settings": map[string]any{"reasoning": "off", "temperature": 0.0, "history_turns": 8, "max_steps": 30, "max_tool_failures": 7, "timeout_sec": 1200, "run_timeout_sec": 1800}}
 	w := callAPI(t, a, "PATCH", "/api/generation", input, nil)
 	if w.Code != 200 || strings.Contains(w.Body.String(), "preserved-secret") {
 		t.Fatal(w.Body.String())
 	}
 	after := a.store.Snapshot().Config
-	if after.APIKey != before.APIKey || after.Temperature == nil || *after.Temperature != 0 || after.reasoningMode() != "off" || after.TimeoutSec != 1200 || after.runTimeout() != 1800 {
+	if after.MaxSteps != 30 || after.toolFailureLimit() != 7 || after.APIKey != before.APIKey || after.Temperature == nil || *after.Temperature != 0 || after.reasoningMode() != "off" || after.TimeoutSec != 1200 || after.runTimeout() != 1800 {
 		t.Fatal("lost settings or credential")
 	}
-	for _, settings := range []map[string]any{{"reasoning": "invalid mode"}, {"temperature": -1}, {"max_tokens": -1}, {"history_turns": 101}, {"timeout_sec": 9}, {"timeout_sec": 86401}, {"timeout_sec": nil}, {"timeout_sec": 900.5}, {"run_timeout_sec": 1}, {"context_tokens": 100}, {"api_key": "overwritten"}, {"max_steps": 0}, {"reasoning": nil}} {
+	for _, settings := range []map[string]any{{"reasoning": "invalid mode"}, {"temperature": -1}, {"max_tokens": -1}, {"history_turns": 101}, {"timeout_sec": 9}, {"timeout_sec": 86401}, {"timeout_sec": nil}, {"timeout_sec": 900.5}, {"run_timeout_sec": 1}, {"context_tokens": 100}, {"api_key": "overwritten"}, {"max_steps": 0}, {"max_tool_failures": -1}, {"max_tool_failures": 51}, {"max_tool_failures": nil}, {"reasoning": nil}} {
 		input["settings"] = settings
 		if w := callAPI(t, a, "PATCH", "/api/generation", input, nil); w.Code != 400 {
 			t.Fatalf("accepted %v: %s", settings, w.Body.String())

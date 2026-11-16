@@ -41,6 +41,12 @@ func (c Config) historyTurns() int {
 	}
 	return c.HistoryTurns
 }
+func (c Config) toolFailureLimit() int {
+	if c.MaxToolFailures == 0 {
+		return 10
+	}
+	return c.MaxToolFailures
+}
 func (c Config) runTimeout() int {
 	if c.RunTimeoutSec == 0 {
 		return 1800
@@ -150,6 +156,8 @@ func applyGeneration(c *Config, settings map[string]json.RawMessage) error {
 			target = &c.TimeoutSec
 		case "max_steps":
 			target = &c.MaxSteps
+		case "max_tool_failures":
+			target = &c.MaxToolFailures
 		case "system_prompt":
 			target = &c.SystemPrompt
 		default:

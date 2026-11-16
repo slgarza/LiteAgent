@@ -87,23 +87,52 @@ async function completion(vscode, model, body, token) {
   const options = tools.length ? {tools, toolMode: vscode.LanguageModelChatToolMode.Auto} : {};
   const response = await cancellable(model.sendRequest(messages, options, token), token);
   const iterator = response.stream[Symbol.asyncIterator]();
-  let content = '', bytes = 0;
+  let content = '', reasoning = '', bytes = 0, parts = 0, skipped = false;
   const calls = [], seen = new Set();
+  const isPart = (part, constructor) => typeof constructor === 'function' && part instanceof constructor;
+  const countBytes = size => {
+    bytes += size;
+    if (bytes > 2 * 1024 * 1024) throw new BridgeError(502, 'The model response exceeded the bridge size limit.');
+  };
+  const plainText = value => {
+    if (typeof value !== 'string') throw new BridgeError(502, 'The model returned invalid text. No partial response was used.');
+    countBytes(Buffer.byteLength(value));
+    return value;
+  };
   while (true) {
     const {value: part, done} = await cancellable(iterator.next(), token);
     if (done) break;
+    if (++parts > 65536) throw new BridgeError(502, 'The model response exceeded the bridge part limit.');
     if (part instanceof vscode.LanguageModelTextPart) {
-      content += part.value; bytes += Buffer.byteLength(part.value);
+      content += plainText(part.value);
     } else if (part instanceof vscode.LanguageModelToolCallPart) {
       if (!names.has(part.name) || typeof part.callId !== 'string' || !part.callId || seen.has(part.callId) || !object(part.input) || calls.length >= 128) throw new BridgeError(502, 'The model returned an invalid tool call. No tools were executed.');
       seen.add(part.callId);
-      const args = JSON.stringify(part.input); bytes += Buffer.byteLength(args);
+      const args = JSON.stringify(part.input); countBytes(Buffer.byteLength(args));
       calls.push({id: part.callId, type: 'function', function: {name: part.name, arguments: args}});
-    } else throw new BridgeError(502, 'The model returned an unsupported response part. No partial response was used.');
-    if (bytes > 2 * 1024 * 1024) throw new BridgeError(502, 'The model response exceeded the bridge size limit.');
+    } else if (isPart(part, vscode.LanguageModelThinkingPart)) {
+      // Available on some VS Code versions. Only forward the visible value;
+      // ids, signatures, encrypted state and metadata stay out of the wire reply.
+      for (const value of Array.isArray(part.value) ? part.value : [part.value]) reasoning += plainText(value);
+    } else if (isPart(part, vscode.LanguageModelDataPart)) {
+      if (!(part.data instanceof Uint8Array)) throw new BridgeError(502, 'The model returned invalid data. No partial response was used.');
+      countBytes(part.data.byteLength);
+      if (part.mimeType === 'text/plain' || part.mimeType === 'text/markdown') {
+        try { content += new TextDecoder('utf-8', {fatal: true}).decode(part.data); }
+        catch { throw new BridgeError(502, 'The model returned invalid UTF-8 text data. No partial response was used.'); }
+      } else skipped = true;
+    } else {
+      // The public stream deliberately includes unknown future parts. Do not
+      // stringify them, guess text/tool calls from their fields or abort an
+      // otherwise valid reply. Still consume to completion so errors propagate.
+      skipped = true;
+    }
   }
-  if (!content && !calls.length) throw new BridgeError(502, 'The model returned an empty response.');
+  if (!content && !calls.length) throw new BridgeError(502, skipped || reasoning
+    ? 'The model returned no supported answer text or tool calls. Thinking or other data alone cannot complete a reply.'
+    : 'The model returned an empty response.');
   const message = {role: 'assistant', content};
+  if (reasoning) message.reasoning_content = reasoning;
   if (calls.length) message.tool_calls = calls;
   return {id: 'chatcmpl-' + randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{index: 0, message, finish_reason: calls.length ? 'tool_calls' : 'stop'}]};
 }

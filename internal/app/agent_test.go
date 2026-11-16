@@ -24,7 +24,7 @@ func newTestApp(t *testing.T) *App {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{store: st, browser: &Browser{dir: dir}, dir: dir, root: ctx}
+	a := &App{store: st, browser: &Browser{dir: dir}, dir: dir, root: ctx, startedAt: time.Now()}
 	t.Cleanup(func() { cancel(); a.wg.Wait(); a.browser.Close() })
 	return a
 }
@@ -210,7 +210,7 @@ func TestAgentRecallsSkillsAndPersists(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	w := callAPI(t, a, "POST", "/api/runs", map[string]any{"task": "Find the monthly report"}, nil)
+	w := callAPI(t, a, "POST", "/api/runs", map[string]any{"task": "Use the monthly report skill", "skill_ids": []string{"report"}}, nil)
 	if w.Code != 202 {
 		t.Fatal(w.Body.String())
 	}

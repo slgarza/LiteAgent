@@ -2,7 +2,7 @@
   "name": "liteagent-vscode-bridge",
   "displayName": "LiteAgent VS Code Bridge",
   "description": "Route LiteAgent requests through language models exposed by VS Code.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "slgarza",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {"type": "git", "url": "https://github.com/slgarza/LiteAgent.git"},

@@ -8,7 +8,7 @@ const el = (tag, text, className) => {
 };
 const statusNames = {running: 'Working…', completed: 'Finished', failed: 'Error', cancelled: 'Stopped', limit: 'Limit reached', interrupted: 'Interrupted', timed_out: 'Timed out'};
 const toolNames = {browser_open: 'Opening a page', browser_read: 'Reading the page', browser_click: 'Clicking a control', browser_type: 'Entering text', browser_select: 'Selecting an option', browser_tabs: 'Checking tabs', browser_switch: 'Switching tabs', browser_downloads: 'Checking downloads', skills_search: 'Finding a skill', skills_read: 'Loading a skill'};
-Object.assign(toolNames, {filesystem_info: 'Checking local folders', filesystem_stat: 'Checking file details', filesystem_list: 'Listing files', filesystem_read: 'Reading a file', filesystem_mkdir: 'Creating a folder', filesystem_write: 'Saving a file', filesystem_edit: 'Editing a file', filesystem_office_read: 'Reading an Office document', filesystem_office_edit: 'Editing document text', filesystem_sheet_set: 'Updating spreadsheet cells'});
+Object.assign(toolNames, {conversation_history: 'Reviewing recorded actions', filesystem_info: 'Checking local folders', filesystem_stat: 'Checking file details', filesystem_list: 'Listing files', filesystem_read: 'Reading a file', filesystem_mkdir: 'Creating a folder', filesystem_write: 'Saving a file', filesystem_edit: 'Editing a file', filesystem_office_read: 'Reading an Office document', filesystem_office_edit: 'Editing document text', filesystem_sheet_set: 'Updating spreadsheet cells'});
 let state = null;
 let chatID = new URLSearchParams(location.search).get('chat');
 let initialized = false, revision = 0, previousHistory = '', renderedChat;
@@ -22,9 +22,11 @@ let pendingSubmission = null, pendingSchedule = null;
 let queueSignature = '', queueEditing = null;
 const queueBusy = new Set();
 let settingsSource = null;
+let showThinking = true;
+try { showThinking = localStorage.getItem('liteagent.showThinking') !== 'false'; } catch {}
 let scheduleSignature = '';
 let commandIndex = 0, commandMatches = [];
-const generationFields = ['temperature', 'max_tokens', 'context_tokens', 'history_turns', 'timeout_sec', 'run_timeout_sec', 'max_steps', 'system_prompt'];
+const generationFields = ['temperature', 'max_tokens', 'context_tokens', 'history_turns', 'timeout_sec', 'run_timeout_sec', 'max_steps', 'max_tool_failures', 'system_prompt'];
 
 function feedback(id, text, error = false) {
   const node = $(id);
@@ -297,7 +299,8 @@ function trace(run) {
   if (!actions.length && !run.events.some(event => event.kind === 'error')) return null;
   const details = el('details', undefined, 'action-trace');
   details.dataset.traceId = run.id;
-  details.append(el('summary', actions.length + (actions.length === 1 ? ' action' : ' actions')));
+  const failures = run.events.filter(event => event.kind === 'error' && event.name && actions.some(action => action.name === event.name)).length;
+  details.append(el('summary', actions.length + (actions.length === 1 ? ' action' : ' actions') + (failures ? ' · ' + failures + ' failed' : '')));
   const list = el('ol', undefined, 'events');
   for (const event of run.events) {
     if (event.kind === 'status' || event.kind === 'thinking' || event.kind === 'user') continue;
@@ -321,6 +324,7 @@ function trace(run) {
   return details;
 }
 function thinkingTrace(run) {
+  if (!showThinking) return null;
   const notes = run.events.filter(event => event.kind === 'thinking' && event.content.trim());
   const running = run.status === 'running';
   if (!notes.length && !running) return null;
@@ -331,11 +335,14 @@ function thinkingTrace(run) {
   const indicator = el('span', undefined, 'thinking-indicator');
   indicator.classList.toggle('is-active', running);
   indicator.setAttribute('aria-hidden', 'true');
-  summary.append(indicator, el('span', notes.length ? 'Thinking' : waiting ? 'Waiting for model' : 'Working'));
+  const label = el('span', notes.length ? 'Show thinking' : waiting ? 'Waiting for model' : 'Working');
+  summary.append(indicator, label);
+  details.addEventListener('toggle', () => { if (notes.length) label.textContent = details.open ? 'Thinking' : 'Show thinking'; });
   if (notes.length) summary.append(el('span', notes.length + (notes.length === 1 ? ' note' : ' notes'), 'thinking-count'));
   details.append(summary);
   const body = el('div', undefined, 'thinking-body');
   body.append(el('p', run.model, 'thinking-model'));
+  if (notes.length) body.append(el('p', 'Model-provided notes. Actions and observations record what was actually done.', 'thinking-status'));
   if (notes.length) {
     const list = el('ol', undefined, 'events');
     for (const event of notes) {
@@ -544,7 +551,7 @@ window.addEventListener('DOMContentLoaded', () => { initExtras(); initManagement
 
 const commands = [
   ['/help', 'All commands'], ['/new', 'New conversation'], ['/reset', 'Fresh context; keep history'],
-  ['/status', 'Model, activity and local time'], ['/reasoning', 'Set reasoning effort'],
+  ['/status', 'Session, usage, context and execution'], ['/reasoning', 'Set reasoning effort'],
   ['/config', 'Inspect and change settings'], ['/context', 'Inspect conversation context'],
   ['/rename', 'Rename this chat'], ['/retry', 'Repeat the latest request'], ['/stop', 'Stop the current run'],
   ['/cron', 'Create, preview and manage jobs'], ['/crons', 'List scheduled jobs'],
@@ -656,9 +663,10 @@ function showSettings(tab = 'generation') {
   if (!state) return;
   settingsSource = generationSource();
   for (const field of generationFields) {
-    const value = state.config[field];
+    const value = field === 'max_tool_failures' ? state.config[field] || 10 : field === 'history_turns' ? state.config[field] || 12 : state.config[field];
     $('setting-' + field).value = value ?? '';
   }
+  $('setting-show-thinking').checked = showThinking;
   $('setting-context_tokens').disabled = state.config.provider !== 'ollama';
   $('setting-temperature').disabled = state.config.provider === 'vscode';
   $('setting-max_tokens').disabled = state.config.provider === 'vscode';
@@ -736,6 +744,11 @@ function initExtras() {
   $('reasoning-select').addEventListener('change', async () => {
     try { await saveGeneration({reasoning: $('reasoning-select').value}, generationSource()); feedback('model-feedback', 'Reasoning saved · used for all chats'); }
     catch (error) { feedback('model-feedback', error.message, true); renderReasoning(); }
+  });
+  $('setting-show-thinking').addEventListener('change', () => {
+    showThinking = $('setting-show-thinking').checked;
+    try { localStorage.setItem('liteagent.showThinking', String(showThinking)); } catch {}
+    renderedTurns.clear(); renderConversation();
   });
   $('settings-form').addEventListener('submit', async event => {
     event.preventDefault();

@@ -15,29 +15,30 @@ import (
 )
 
 type Config struct {
-	ConnectionID  string   `json:"connection_id,omitempty"`
-	Provider      string   `json:"provider"`
-	BaseURL       string   `json:"base_url"`
-	Model         string   `json:"model"`
-	APIKey        string   `json:"api_key,omitempty"`
-	MaxSteps      int      `json:"max_steps"`
-	TimeoutSec    int      `json:"timeout_sec"`
-	Thinking      *bool    `json:"thinking,omitempty"`
-	Reasoning     string   `json:"reasoning,omitempty"`
-	Temperature   *float64 `json:"temperature,omitempty"`
-	MaxTokens     int      `json:"max_tokens,omitempty"`
-	ContextTokens int      `json:"context_tokens,omitempty"`
-	HistoryTurns  int      `json:"history_turns,omitempty"`
-	RunTimeoutSec int      `json:"run_timeout_sec,omitempty"`
-	SystemPrompt  string   `json:"system_prompt,omitempty"`
-	Headless      bool     `json:"headless"`
-	DriverPath    string   `json:"driver_path"`
-	BrowserPath   string   `json:"browser_path"`
-	Timezone      string   `json:"timezone"`
+	ConnectionID    string   `json:"connection_id,omitempty"`
+	Provider        string   `json:"provider"`
+	BaseURL         string   `json:"base_url"`
+	Model           string   `json:"model"`
+	APIKey          string   `json:"api_key,omitempty"`
+	MaxSteps        int      `json:"max_steps"`
+	MaxToolFailures int      `json:"max_tool_failures,omitempty"`
+	TimeoutSec      int      `json:"timeout_sec"`
+	Thinking        *bool    `json:"thinking,omitempty"`
+	Reasoning       string   `json:"reasoning,omitempty"`
+	Temperature     *float64 `json:"temperature,omitempty"`
+	MaxTokens       int      `json:"max_tokens,omitempty"`
+	ContextTokens   int      `json:"context_tokens,omitempty"`
+	HistoryTurns    int      `json:"history_turns,omitempty"`
+	RunTimeoutSec   int      `json:"run_timeout_sec,omitempty"`
+	SystemPrompt    string   `json:"system_prompt,omitempty"`
+	Headless        bool     `json:"headless"`
+	DriverPath      string   `json:"driver_path"`
+	BrowserPath     string   `json:"browser_path"`
+	Timezone        string   `json:"timezone"`
 }
 
 func defaultConfig() Config {
-	return Config{Provider: "ollama", BaseURL: "http://127.0.0.1:11434", Model: "qwen3:8b", MaxSteps: 20, TimeoutSec: 900, Timezone: "America/Mexico_City"}
+	return Config{Provider: "ollama", BaseURL: "http://127.0.0.1:11434", Model: "qwen3:8b", MaxSteps: 30, TimeoutSec: 900, Timezone: "America/Mexico_City"}
 }
 
 func (c Config) Validate() error {
@@ -56,6 +57,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxSteps < 1 || c.MaxSteps > 50 {
 		return errors.New("the action limit must be between 1 and 50")
+	}
+	if c.MaxToolFailures < 0 || c.MaxToolFailures > 50 {
+		return errors.New("the tool failure limit must be 0 (10 default) to 50")
 	}
 	if c.TimeoutSec < 10 || c.TimeoutSec > 86400 {
 		return errors.New("the request timeout must be between 10 and 86400 seconds")
@@ -82,22 +86,25 @@ type Event struct {
 }
 
 type Run struct {
-	RequestID    string   `json:"request_id,omitempty"`
-	RequestHash  string   `json:"request_hash,omitempty"`
-	ScheduleID   string   `json:"schedule_id,omitempty"`
-	ScheduledFor string   `json:"scheduled_for,omitempty"`
-	Reasoning    string   `json:"reasoning,omitempty"`
-	ID           string   `json:"id"`
-	ChatID       string   `json:"chat_id"`
-	Origin       string   `json:"origin"`
-	Task         string   `json:"task"`
-	Status       string   `json:"status"`
-	CreatedAt    string   `json:"created_at"`
-	FinishedAt   string   `json:"finished_at,omitempty"`
-	Model        string   `json:"model"`
-	SkillIDs     []string `json:"skill_ids"`
-	Events       []Event  `json:"events"`
-	Result       string   `json:"result,omitempty"`
+	Provider     string      `json:"provider,omitempty"`
+	ContextLimit int         `json:"context_limit,omitempty"`
+	Metrics      *RunMetrics `json:"metrics,omitempty"`
+	RequestID    string      `json:"request_id,omitempty"`
+	RequestHash  string      `json:"request_hash,omitempty"`
+	ScheduleID   string      `json:"schedule_id,omitempty"`
+	ScheduledFor string      `json:"scheduled_for,omitempty"`
+	Reasoning    string      `json:"reasoning,omitempty"`
+	ID           string      `json:"id"`
+	ChatID       string      `json:"chat_id"`
+	Origin       string      `json:"origin"`
+	Task         string      `json:"task"`
+	Status       string      `json:"status"`
+	CreatedAt    string      `json:"created_at"`
+	FinishedAt   string      `json:"finished_at,omitempty"`
+	Model        string      `json:"model"`
+	SkillIDs     []string    `json:"skill_ids"`
+	Events       []Event     `json:"events"`
+	Result       string      `json:"result,omitempty"`
 }
 
 type Chat struct {
@@ -238,13 +245,21 @@ func (s *Store) Update(fn func(*State) error) error {
 }
 
 func (s *Store) AddEvent(id, kind, name, content string) error {
-	return s.Update(func(st *State) error {
+	_, err := s.appendEvent(id, kind, name, content)
+	return err
+}
+
+func (s *Store) appendEvent(id, kind, name, content string) (int, error) {
+	index := 0
+	err := s.Update(func(st *State) error {
 		for i := range st.Runs {
 			if st.Runs[i].ID == id {
+				index = len(st.Runs[i].Events)
 				st.Runs[i].Events = append(st.Runs[i].Events, Event{now(), kind, name, cut(content, 18000)})
 				return nil
 			}
 		}
 		return errors.New("task not found")
 	})
+	return index, err
 }
