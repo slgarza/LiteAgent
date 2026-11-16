@@ -1,6 +1,6 @@
 # LiteAgent
 
-A local assistant with a web chat, browser automation, text-file tools, saved procedures and scheduled reminders. One Go executable serves the interface and runs the agent.
+A local assistant with a web chat, browser automation, text and Office file tools, saved procedures and scheduled reminders. One Go executable serves the interface and runs the agent.
 
 ![LiteAgent chat with model and reasoning beside the composer](docs/screenshots/chat-desktop.png)
 
@@ -14,6 +14,7 @@ A local assistant with a web chat, browser automation, text-file tools, saved pr
 - Automatic discovery of installed Ollama models and first-run setup guidance.
 - Windows production executable without a console; Quit from the interface.
 - Chrome automation and local text-file inspection, creation and editing.
+- Reading and editing existing Excel, Word and PowerPoint documents, without an Office runtime.
 - Saved procedures, cron jobs, reminders and notification sounds.
 - Settings for connections, timeouts, notifications, schedules, skills and MCP servers.
 - Persistent local conversations, including deletion while a reply is running.
@@ -162,7 +163,7 @@ See [Architecture](docs/ARCHITECTURE.md) and [CHANGELOG.md](CHANGELOG.md).
 
 Chats, provider keys, MCP tokens, schedules, downloads and browser cookies belong to the runtime data directory and must not be committed. Credentials are stored locally without encryption, subject to OS file permissions. Remote models receive conversation context and relevant tool results. See [Data and publishing](docs/DATA.md).
 
-One agent operation runs at a time. Scheduled work needs the application and computer running; desktop alerts also need an open tab and browser permission. File tools handle UTF-8 text up to 1 MiB, without shell execution, deletion or binary document parsing. Windows packages are cross-compiled; runtime behavior is verified on Linux and still needs Windows validation.
+One agent operation runs at a time. Scheduled work needs the application and computer running; desktop alerts also need an open tab and browser permission. File tools handle UTF-8 text up to 1 MiB and read/edit existing Excel `.xlsx`, Word `.docx` and PowerPoint `.pptx` files up to 32 MiB. Office support covers worksheet values/formulas and document/slide text; it does not calculate formulas, render images or control Office windows. Legacy `.xls/.doc/.ppt`, PDFs and encrypted/macro-enabled documents are unsupported. There is no shell execution or file deletion. Windows packages are cross-compiled; runtime behavior is verified on Linux and still needs Windows validation.
 
 ## License
 

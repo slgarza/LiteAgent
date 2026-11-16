@@ -6,6 +6,9 @@ Record user-visible work under **Unreleased**, grouped as Added, Changed, Fixed 
 
 ### Added
 
+- Native reading and targeted editing of existing Excel `.xlsx`, Word `.docx` and PowerPoint `.pptx` files within the home directory. Includes paginated sections/text, Word and slide table text, worksheet values/formulas, format preservation and SHA-256 conflict checks. No Office or Python runtime is required.
+- Office package bounds, atomic batch cell updates, protected/signed document edit checks, and synthetic compatibility tests with independent readers and optional LibreOffice rendering.
+
 - Persistent follow-up queue above the composer: send while the agent works, edit or remove pending messages, and use Steer to apply a follow-up to the current reply at the next safe boundary.
 - Queued messages run in order after successful replies. Stop, failed replies and restarts pause pending work; Resume starts only messages that have not been executed.
 

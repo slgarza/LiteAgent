@@ -14,7 +14,7 @@ ROOT_FILES = {
     '.gitignore', '.gitattributes', 'go.mod', 'go.sum',
     'README.md', 'AGENTS.md', 'CHANGELOG.md', 'LICENSE', 'THIRD_PARTY_NOTICES.txt',
 }
-SCRIPTS = {'build.sh', 'package.py', 'check-repository.py', 'Start-LiteAgent.bat', 'build-vscode-bridge.py', 'test-vscode-bridge.py'}
+SCRIPTS = {'build.sh', 'package.py', 'check-repository.py', 'Start-LiteAgent.bat', 'build-vscode-bridge.py', 'test-vscode-bridge.py', 'test-office.py'}
 PRIVATE_PARTS = {
     'data', 'dist', '.qa', '.hallmark', '.codex', '.claude', '.env',
     'browser-profile', 'downloads', 'drivers', 'state.json', 'state.lock',

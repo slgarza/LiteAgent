@@ -30,6 +30,7 @@ flowchart LR
 | `internal/app/agent.go` | Context and model/tool loop |
 | `internal/app/provider.go`, `responses.go` | Model protocols |
 | `internal/app/filesystem.go`, `desktop_*.go` | File tools and Desktop discovery |
+| `internal/app/office.go`, `office_sheet.go` | Bounded OOXML reading and targeted document/spreadsheet edits |
 | `internal/app/browser.go`, `driver.go` | WebDriver and driver installation |
 | `internal/app/scheduler.go`, `schedules_api.go` | Jobs and durable occurrence claims |
 | `internal/app/store.go` | Serialized state mutations and atomic persistence |
@@ -51,7 +52,7 @@ Steering targets an explicit active run in the same chat. The worker consumes pe
 
 Deleting another chat leaves the active run alone. Deleting the active chat marks it pending, cancels and waits on its completion channel without holding `runMu`. The chat, runs and linked schedules are then removed in one store update. An interrupted delete request keeps the conversation for a later retry.
 
-Filesystem operations use a separate lock. Store updates do not take that lock. Avoid waiting for a worker while holding any lock it needs.
+Filesystem operations use a separate lock. Office tools share the same `os.Root` and replacement/hash path as text tools. Bounded ZIP packages are interpreted through their relationships; changed XML is patched by byte range and untouched package parts are copied without reserialization. Worksheet edits invalidate the calculation chain and request recalculation in the spreadsheet application. Store updates do not take that lock. Avoid waiting for a worker while holding any lock it needs.
 
 ## Persistence and schedules
 

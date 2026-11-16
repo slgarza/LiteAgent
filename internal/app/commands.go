@@ -60,7 +60,7 @@ func (a *App) recordRun(run Run, claim func(*State) error) (Run, error) {
 	return run, err
 }
 
-const commandHelp = `You can chat normally and ask me to use the browser, create folders, read or save local text files, manage skills or schedule work.
+const commandHelp = `You can chat normally and ask me to use the browser, create folders, read or save local text files, read and edit Excel (.xlsx), Word (.docx) or PowerPoint (.pptx) files, manage skills or schedule work.
 
 **Commands**
 - /onboard — connect a model, step by step

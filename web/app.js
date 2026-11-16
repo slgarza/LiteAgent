@@ -8,7 +8,7 @@ const el = (tag, text, className) => {
 };
 const statusNames = {running: 'Working…', completed: 'Finished', failed: 'Error', cancelled: 'Stopped', limit: 'Limit reached', interrupted: 'Interrupted', timed_out: 'Timed out'};
 const toolNames = {browser_open: 'Opening a page', browser_read: 'Reading the page', browser_click: 'Clicking a control', browser_type: 'Entering text', browser_select: 'Selecting an option', browser_tabs: 'Checking tabs', browser_switch: 'Switching tabs', browser_downloads: 'Checking downloads', skills_search: 'Finding a skill', skills_read: 'Loading a skill'};
-Object.assign(toolNames, {filesystem_info: 'Checking local folders', filesystem_stat: 'Checking file details', filesystem_list: 'Listing files', filesystem_read: 'Reading a file', filesystem_mkdir: 'Creating a folder', filesystem_write: 'Saving a file', filesystem_edit: 'Editing a file'});
+Object.assign(toolNames, {filesystem_info: 'Checking local folders', filesystem_stat: 'Checking file details', filesystem_list: 'Listing files', filesystem_read: 'Reading a file', filesystem_mkdir: 'Creating a folder', filesystem_write: 'Saving a file', filesystem_edit: 'Editing a file', filesystem_office_read: 'Reading an Office document', filesystem_office_edit: 'Editing document text', filesystem_sheet_set: 'Updating spreadsheet cells'});
 let state = null;
 let chatID = new URLSearchParams(location.search).get('chat');
 let initialized = false, revision = 0, previousHistory = '', renderedChat;

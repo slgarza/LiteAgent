@@ -32,6 +32,20 @@ go test ./internal/app \
 
 Inspect each screenshot before copying selected images into `docs/screenshots/`. Never publish live-user captures. Record fixture provenance in the screenshot index.
 
+## Office compatibility tests
+
+Normal Go tests generate synthetic OOXML in temporary directories and cover text across styled runs, tables, slide order, shared strings, typed cells, formulas, pagination, conflict checks, cancellation, package limits and a fake-provider edit/verification loop.
+
+An optional independent-reader check uses `scripts/test-office.py`. Install `python-docx`, `python-pptx` and `openpyxl` in a temporary Python environment, then point `LITEAGENT_OFFICE_TEST_PYTHON` at its interpreter. Optionally set `LITEAGENT_OFFICE_TEST_LIBREOFFICE` to render all three edited fixtures to PDF with a fresh, isolated profile:
+
+```bash
+LITEAGENT_OFFICE_TEST_PYTHON=/path/to/test-env/bin/python \
+LITEAGENT_OFFICE_TEST_LIBREOFFICE=/usr/bin/libreoffice \
+go test ./internal/app -run TestOfficeApplicationCompatibility -v
+```
+
+This check creates its own documents and never opens user files. These Python libraries and LibreOffice are test-only; the packaged application has no Office runtime dependency.
+
 ## VS Code bridge
 
 The optional extension is plain JavaScript with Node/VS Code built-ins and no runtime npm dependencies. Its bridge translates the OpenAI Chat subset used by LiteAgent into the public `vscode.lm` API. Credentials of other extensions are never read. The generated VSIX stays in ignored `dist/`.

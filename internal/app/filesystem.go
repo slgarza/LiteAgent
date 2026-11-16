@@ -76,15 +76,26 @@ func localFileHash(data []byte) string {
 }
 
 func readLocalText(root *os.Root, path string) ([]byte, error) {
+	data, err := readLocalFile(root, path, maxLocalFileBytes)
+	if err != nil {
+		return nil, err
+	}
+	if !utf8.Valid(data) || strings.ContainsRune(string(data), 0) {
+		return nil, errors.New("this file is not UTF-8 text; use filesystem_office_read for .xlsx, .docx or .pptx")
+	}
+	return data, nil
+}
+
+func readLocalFile(root *os.Root, path string, limit int64) ([]byte, error) {
 	info, err := root.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("only regular text files can be read or edited")
+		return nil, errors.New("only regular files can be read or edited")
 	}
-	if info.Size() > maxLocalFileBytes {
-		return nil, errors.New("file exceeds the 1 MiB text-file limit")
+	if info.Size() > limit {
+		return nil, fmt.Errorf("file exceeds the %d MiB size limit", limit>>20)
 	}
 	f, err := root.OpenFile(path, localReadFlags(), 0)
 	if err != nil {
@@ -95,15 +106,12 @@ func readLocalText(root *os.Root, path string) ([]byte, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("the path is no longer a regular file")
 	}
-	data, err := io.ReadAll(io.LimitReader(f, maxLocalFileBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > maxLocalFileBytes {
-		return nil, errors.New("file exceeds the 1 MiB text-file limit")
-	}
-	if !utf8.Valid(data) || strings.ContainsRune(string(data), 0) {
-		return nil, errors.New("this file is not UTF-8 text; binary documents are not supported")
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("file exceeds the %d MiB size limit", limit>>20)
 	}
 	return data, nil
 }
@@ -114,10 +122,14 @@ func saveLocalText(ctx context.Context, root *os.Root, path string, data []byte,
 	if len(data) > maxLocalFileBytes || !utf8.Valid(data) || strings.ContainsRune(string(data), 0) {
 		return errors.New("content must be UTF-8 text of at most 1 MiB, without NUL bytes")
 	}
+	return saveLocalFile(ctx, root, path, data, expected, readLocalText)
+}
+
+func saveLocalFile(ctx context.Context, root *os.Root, path string, data []byte, expected string, readCurrent func(*os.Root, string) ([]byte, error)) error {
 	if expected != "" {
 		decoded, err := hex.DecodeString(expected)
 		if err != nil || len(decoded) != sha256.Size {
-			return errors.New("expected_sha256 must be the sha256 returned by filesystem_read")
+			return errors.New("expected_sha256 must be the sha256 returned by the file read tool")
 		}
 		expected = strings.ToLower(expected)
 	}
@@ -183,7 +195,7 @@ func saveLocalText(ctx context.Context, root *os.Root, path string, data []byte,
 		}
 		return nil
 	}
-	current, err := readLocalText(parent, name)
+	current, err := readCurrent(parent, name)
 	if err != nil {
 		return err
 	}
@@ -231,7 +243,8 @@ func (a *App) filesystemTool(ctx context.Context, name string, args map[string]a
 		_, desktopErr := localFilePath(home, desktop)
 		result = map[string]any{"os": runtime.GOOS, "home": home, "desktop": desktop, "desktop_in_scope": desktopErr == nil,
 			"access_root": home, "relative_paths": "relative to home", "max_file_bytes": maxLocalFileBytes, "max_directory_entries": maxLocalDirectoryEntries,
-			"operations": []string{"stat", "list", "read_text", "create_directory", "write_text", "edit_text"}}
+			"operations":     []string{"stat", "list", "read_text", "create_directory", "write_text", "edit_text", "read_office", "edit_office_text", "set_spreadsheet_cells"},
+			"office_formats": []string{".xlsx", ".docx", ".pptx"}, "max_office_file_bytes": maxOfficeFileBytes}
 	} else {
 		input, _ := args["path"].(string)
 		path, err := localFilePath(home, input)
@@ -240,6 +253,8 @@ func (a *App) filesystemTool(ctx context.Context, name string, args map[string]a
 		}
 		fullPath := filepath.Join(home, path)
 		switch name {
+		case "filesystem_office_read", "filesystem_office_edit", "filesystem_sheet_set":
+			result, err = officeTool(ctx, root, path, fullPath, name, args)
 		case "filesystem_stat":
 			var info os.FileInfo
 			info, err = root.Lstat(path)
